@@ -3,13 +3,41 @@
 <head>
   <meta charset="UTF-8">
   <title>Death Melody</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding-top: 50px;
+    }
+    #inputSection {
+      display: none;
+      flex-direction: column;
+      gap: 10px;
+      margin-top: 20px;
+    }
+    input {
+      padding: 8px;
+      font-size: 16px;
+    }
+    button {
+      padding: 10px 20px;
+      font-size: 16px;
+      cursor: pointer;
+    }
+  </style>
 </head>
-<body style="font-family:sans-serif;max-width:400px;margin:40px auto;">
-  <h3>Введите даты</h3>
-  <input type="text" id="birth" placeholder="Дата рождения (напр. 190103)">
-  <input type="text" id="death" placeholder="Дата смерти (напр. 198812)">
-  <button onclick="addDates()">Добавить</button>
-  <p id="status"></p>
+<body>
+
+  <button id="startButton">▶️ Старт</button>
+
+  <div id="inputSection">
+    <input type="text" id="birth" placeholder="Дата рождения (напр. 190103)">
+    <input type="text" id="death" placeholder="Дата смерти (напр. 198812)">
+    <button onclick="addDates()">Добавить</button>
+    <p id="status"></p>
+  </div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.7.77/Tone.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
@@ -73,10 +101,14 @@
       });
     }
 
-    window.addEventListener('load', async () => {
+    document.getElementById("startButton").addEventListener("click", async () => {
       await Tone.start();
       playLoopFromFirebase();
+
+      document.getElementById("startButton").style.display = "none";
+      document.getElementById("inputSection").style.display = "flex";
     });
   </script>
+
 </body>
 </html>
