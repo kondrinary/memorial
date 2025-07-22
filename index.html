@@ -6,42 +6,80 @@
   <title>Death Melody</title>
   <style>
     body {
+      margin: 0;
       font-family: sans-serif;
+      display: flex;
+      height: 100vh;
+    }
+
+    /* Левая часть — форма */
+    #left {
+      width: 50%;
+      background: #ffffff;
       display: flex;
       flex-direction: column;
       align-items: center;
+      justify-content: flex-start;
       padding-top: 50px;
     }
+
     #inputSection {
       display: none;
       flex-direction: column;
       gap: 10px;
       margin-top: 20px;
     }
+
     input, button {
       padding: 10px;
       font-size: 16px;
     }
+
     #startButton {
       padding: 15px 30px;
       font-size: 18px;
     }
+
     #status {
       font-weight: bold;
       color: darkred;
+    }
+
+    /* Правая часть — визуализация */
+    #right {
+      width: 50%;
+      background: #000000;
+      color: white;
+      padding: 20px;
+      font-size: 18px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      font-family: monospace;
+    }
+
+    .digit {
+      transition: color 0.2s;
+    }
+
+    .digit.active {
+      color: #00ff00;
     }
   </style>
 </head>
 <body>
 
-  <button id="startButton">▶️ Старт</button>
+  <div id="left">
+    <button id="startButton">▶️ Старт</button>
 
-  <div id="inputSection">
-    <input type="text" id="birth" placeholder="Дата рождения (ДД.ММ.ГГГГ)" maxlength="10">
-    <input type="text" id="death" placeholder="Дата смерти (ДД.ММ.ГГГГ)" maxlength="10">
-    <button id="addBtn">Добавить</button>
-    <p id="status"></p>
+    <div id="inputSection">
+      <input type="text" id="birth" placeholder="Дата рождения (ДД.ММ.ГГГГ)" maxlength="10">
+      <input type="text" id="death" placeholder="Дата смерти (ДД.ММ.ГГГГ)" maxlength="10">
+      <button id="addBtn">Добавить</button>
+      <p id="status"></p>
+    </div>
   </div>
+
+  <div id="right" id="visual"></div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.7.77/Tone.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
@@ -68,6 +106,7 @@
     }
 
     let synth;
+    let digitElements = [];
 
     function convertNumberToFrequency(num) {
       return freqMap[num % freqMap.length];
@@ -120,16 +159,43 @@
       document.getElementById("death").value = '';
     }
 
+    function renderDates(allSequences) {
+      const visual = document.getElementById("right");
+      visual.innerHTML = '';
+      digitElements = [];
+
+      for (let seq of allSequences.slice().reverse()) {
+        const row = document.createElement("div");
+        row.style.marginBottom = "10px";
+        const digits = seq.map(d => {
+          const span = document.createElement("span");
+          span.textContent = d;
+          span.classList.add("digit");
+          row.appendChild(span);
+          digitElements.push(span);
+          return span;
+        });
+        visual.appendChild(row);
+      }
+    }
+
     async function playAllSequences() {
       db.ref('dates').on('value', async (snapshot) => {
         const data = snapshot.val() || {};
         const allSequences = Object.values(data);
+        renderDates(allSequences);
+
         while (true) {
+          let offset = 0;
           for (let seq of allSequences) {
             for (let digit of seq) {
               const freq = convertNumberToFrequency(digit);
+              const el = digitElements[offset];
+              if (el) el.classList.add("active");
               synth.triggerAttackRelease(freq, "8n");
               await delayMs(randomRange(1200, 3000));
+              if (el) el.classList.remove("active");
+              offset++;
             }
             await delayMs(4200);
           }
@@ -140,15 +206,14 @@
     document.getElementById("startButton").addEventListener("click", async () => {
       await Tone.start();
 
-      // создаём эффекты и синт только после клика
-      const distortion = new Tone.Distortion(0.3);
-      const chorus = new Tone.Chorus(4, 2.5, 0.3).start();
-      const reverb = new Tone.Reverb({ decay: 4, preDelay: 0.1 });
-      const delay = new Tone.FeedbackDelay("8n", 0.3);
+      const distortion = new Tone.Distortion(0.05);
+      const chorus = new Tone.Chorus(6, 3.5, 0.2).start();
+      const reverb = new Tone.Reverb({ decay: 6, preDelay: 0.2 });
+      const delay = new Tone.FeedbackDelay("8n", 0.4);
 
       synth = new Tone.Synth({
-        oscillator: { type: "sine" },
-        envelope: { attack: 0.3, decay: 0.2, sustain: 0.1, release: 0.5 }
+        oscillator: { type: "triangle" },
+        envelope: { attack: 0.2, decay: 0.3, sustain: 0.4, release: 0.6 }
       }).chain(chorus, delay, reverb, distortion, Tone.Destination);
 
       playAllSequences();
@@ -157,7 +222,6 @@
       document.getElementById("inputSection").style.display = "flex";
     });
 
-    // слушатели ввода
     document.getElementById("birth").addEventListener("input", function() {
       formatDate(this);
     });
