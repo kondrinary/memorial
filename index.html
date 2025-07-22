@@ -98,44 +98,53 @@ function parseValidDate(str){
 }
 
 /* -------- Аудио -------- */
-let synth;
-let playingTimer=null;
-let timeline=[];
-let pointer=0;
-let isPlaying=false;
 
-function initSynth(){
-  
-  // ===== ПАРАМЕТРЫ, КОТОРЫЕ МОЖНО КРУТИТЬ =====
-  const FX = {
-    delayTime : "8n",   // "8n", "4n", 0.5 и т.п. — длина шага эха
-    feedback  : 0.55,   // 0–0.9  — сколько повторов (эхо)
-    delayWet  : 0.6,    // 0–1    — громкость эха
-    reverbDecay: 5.5,   // 1–10   — длина хвоста реверба
-    reverbWet  : 0.45,  // 0–1    — громкость реверба
-    lowpassFreq: 1800,  // Гц     — срез ВЧ, ниже = мягче
-    distAmount : 0.0    // 0–1    — искажения, оставляем 0 для мягкости
-  };
+// ====== УПРАВЛЕНИЕ СКОРОСТЬЮ / ВРЕМЕНАМИ ======
+// 1   = нормальная скорость
+// 2   = всё медленнее в 2 раза
+// 0.5 = всё быстрее в 2 раза
+let SPEED = 1;
 
-  // ===== ЭФФЕКТЫ =====
-  const distortion = new Tone.Distortion(FX.distAmount);
-  const chorus     = new Tone.Chorus(4, 2.5, 0.2).start();
-  const delayFx    = new Tone.FeedbackDelay(FX.delayTime, FX.feedback);
-  delayFx.wet.value = FX.delayWet;
-  const reverb     = new Tone.Reverb({ decay: FX.reverbDecay, preDelay: 0.08, wet: FX.reverbWet });
-  const lowpass    = new Tone.Filter(FX.lowpassFreq, "lowpass");
-  const limiter    = new Tone.Limiter(-6); // защита от клипов/щелчков
+const DUR = {
+  noteLen : 0.35,  // секунды — длина ноты до масштабирования
+  randMin : 1000,  // мс — минимальная пауза между цифрами
+  randMax : 3000,  // мс — максимальная пауза между цифрами
+  pairGap : 4000   // мс — пауза между парами дат
+};
 
-  // ===== СИНТ =====
-  synth = new Tone.Synth({
-    oscillator: { type: "triangle" },    // хочешь ещё мягче — поставь "sine"
-    envelope :  { attack: 0.15, decay: 0.25, sustain: 0.35, release: 0.9 } // чуть длиннее — меньше щелчков
-  });
-  synth.portamento = 0.02; // сглаживает смену высоты
+function scaled(ms){ return Math.round(ms * SPEED); }
 
-  // ===== ЦЕПОЧКА =====
-  synth.chain(lowpass, chorus, delayFx, reverb, distortion, limiter, Tone.Destination);
-  
+function delayBetweenNotes(){
+  const base = DUR.randMin + Math.random()*(DUR.randMax - DUR.randMin);
+  return scaled(base);
+}
+
+// ====== ГЛАВНАЯ ФУНКЦИЯ ПРОИГРЫВАНИЯ ======
+function playStep(){
+  if (timeline.length === 0) {
+    debugInfo.textContent = 'Нет данных для проигрывания.';
+    isPlaying = false;
+    return;
+  }
+  if (pointer >= timeline.length) pointer = 0;
+
+  const { digit, freq, span, pairEnd } = timeline[pointer++];
+
+  // Подсветка и отладка
+  if (span) span.classList.add('active');
+  debugInfo.textContent = Сейчас играет: ${digit} → ${freq.toFixed(2)} Гц;
+
+  // Нота
+  const now = Tone.now();
+  const lenSec = DUR.noteLen * SPEED;
+  synth.triggerAttackRelease(freq, lenSec, now);
+
+  // Снять подсветку после ноты
+  setTimeout(()=>{ if(span) span.classList.remove('active'); }, lenSec*1000 - 10);
+
+  // Пауза до следующей цифры
+  const wait = delayBetweenNotes() + (pairEnd ? scaled(DUR.pairGap) : 0);
+  playingTimer = setTimeout(playStep, wait);
 }
 
 /* -------- Визуал + таймлайн -------- */
