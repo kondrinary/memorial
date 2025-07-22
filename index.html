@@ -174,13 +174,13 @@ function buildVisualAndTimeline(list){
 
 /* -------- Управление скоростью -------- */
 // 1   = нормально; 2 = медленнее; 0.5 = быстрее
-let SPEED = 0.4;
+let SPEED = 2;
 
 const DUR = {
   noteLen : 0.4,  // сек — длина ноты (до масштаба)
-  randMin : 1000*SPEED,  // мс — мин. пауза между цифрами
-  randMax : 3000*SPEED,  // мс — макс. пауза
-  pairGap : 4000*SPEED   // мс — пауза между парами дат
+  randMin : 400,  // мс — мин. пауза между цифрами
+  randMax : 1400,  // мс — макс. пауза
+  pairGap : 2000*SPEED   // мс — пауза между парами дат
 };
 
 function scaled(ms){ return Math.round(ms * SPEED); }
