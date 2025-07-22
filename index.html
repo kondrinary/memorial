@@ -64,6 +64,7 @@
     <button id="startButton">▶️ Старт</button>
     <div id="inputSection">
       <div id="debugInfo" style="margin-top:20px; font-size:14px; color:#555;"></div>
+      <div id="debugInfo" style="margin-top:20px; font-size:14px; color:#555;"></div>
       <input type="text" id="birth" placeholder="Дата рождения (ДД.ММ.ГГГГ)" maxlength="10">
       <input type="text" id="death" placeholder="Дата смерти (ДД.ММ.ГГГГ)" maxlength="10">
       <button id="addBtn">Добавить</button>
@@ -174,10 +175,9 @@ async function playSequences(dataList) {
           for (let digit of allDigits) {
             const freq = convertNumberToFrequency(digit);
             const el = digitElements.shift();
-            
-            document.getElementById("debugInfo").textContent = `Сейчас играет: ${digit} → ${freq.toFixed(2)} Гц`;
-if (el && el.classList.contains("digit")) el.classList.add("active");
-synth1.triggerAttackRelease(freq, "8n");
+            if (el && el.classList.contains("digit")) el.classList.add("active");
+document.getElementById("debugInfo").textContent = `Сейчас играет: ${digit} → ${freq.toFixed(2)} Гц`;
+            synth1.triggerAttackRelease(freq, "8n");
             synth2.triggerAttackRelease(freq * 2, "8n"); // второй голос
             await new Promise(resolve => playLoop = setTimeout(resolve, randomRange(1200, 3000)));
             if (el && el.classList.contains("digit")) el.classList.remove("active");
