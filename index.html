@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="ru">
 <head>
@@ -60,20 +61,18 @@
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
 
-    // 🎵 микротональность
     const freqMap = [];
     const minFreq = 32.703, maxFreq = 65.406;
     for (let i = 0; i < 10; i++) {
       freqMap.push(minFreq + i * ((maxFreq - minFreq) / 9));
     }
 
-    // 🎛 эффекты
     const distortion = new Tone.Distortion(0.3).toDestination();
     const chorus = new Tone.Chorus(4, 2.5, 0.3).start();
     const reverb = new Tone.Reverb({ decay: 4, preDelay: 0.1 }).connect(distortion);
     const delay = new Tone.FeedbackDelay("8n", 0.3).connect(reverb);
     const synth = new Tone.Oscillator({
-      type: "sine", // можешь поменять на "square", "triangle", "sawtooth"
+      type: "sine",
       frequency: 440
     }).connect(chorus).connect(delay).start();
 
@@ -91,11 +90,11 @@
 
     function formatDate(input) {
       let val = input.value.replace(/\D/g, '').slice(0, 8);
-      let formatted = '';
-      if (val.length >= 2) formatted += val.slice(0,2) + '.';
-      if (val.length >= 4) formatted += val.slice(2,4) + '.';
-      if (val.length > 4) formatted += val.slice(4);
-      input.value = formatted;
+      let result = '';
+      if (val.length > 0) result += val.slice(0, 2);
+      if (val.length >= 3) result += '.' + val.slice(2, 4);
+      if (val.length >= 5) result += '.' + val.slice(4, 8);
+      input.value = result;
     }
 
     function isValidDate(str) {
@@ -104,7 +103,7 @@
       const d = parseInt(cleaned.slice(0,2));
       const m = parseInt(cleaned.slice(2,4));
       const y = parseInt(cleaned.slice(4));
-      if (m < 1  m > 12  d < 1  d > 31  y < 1850 || y > new Date().getFullYear()) return false;
+      if (m < 1 || m > 12 || d < 1 || d > 31 || y < 1850 || y > new Date().getFullYear()) return false;
       const date = new Date(`${y}-${m}-${d}`);
       return date && date.getMonth() + 1 === m;
     }
@@ -148,9 +147,9 @@
             for (let digit of seq) {
               const freq = convertNumberToFrequency(digit);
               synth.frequency.setValueAtTime(freq, Tone.now());
-              await delayMs(randomRange(1200, 3000)); // 🔁 увеличенные задержки между нотами (x3)
+              await delayMs(randomRange(1200, 3000));
             }
-            await delayMs(1400 * 3); // 🔁 увеличенная пауза между наборами
+            await delayMs(4200);
           }
         }
       });
