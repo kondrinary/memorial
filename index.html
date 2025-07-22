@@ -61,6 +61,7 @@
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
 
+    // 🎵 Микротональность: 10 равных частотных шагов между C1 и C2 (не нотные!)
     const freqMap = [];
     const minFreq = 32.703, maxFreq = 65.406;
     for (let i = 0; i < 10; i++) {
@@ -147,9 +148,9 @@
             for (let digit of seq) {
               const freq = convertNumberToFrequency(digit);
               synth.frequency.setValueAtTime(freq, Tone.now());
-              await delayMs(randomRange(1200, 3000));
+              await delayMs(randomRange(1200, 3000)); // пауза между цифрами
             }
-            await delayMs(4200);
+            await delayMs(4200); // пауза между парами дат
           }
         }
       });
