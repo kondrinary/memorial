@@ -211,7 +211,7 @@ function playStep(){
 
   // Подсветка и отладка
   if (span) span.classList.add('active');
-  debugInfo.textContent = Сейчас играет: ${digit} → ${freq.toFixed(2)} Гц;
+  debugInfo.textContent = 'Сейчас играет: ${digit} → ${freq.toFixed(2)} Гц';
 
   // Нота
   const now = Tone.now();
