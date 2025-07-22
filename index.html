@@ -185,6 +185,10 @@
       synth1 = new Tone.Synth({ oscillator: { type: "triangle" }}).chain(chorus, delay, reverb, distortion, Tone.Destination);
       synth2 = new Tone.Synth({ oscillator: { type: "sine" }}).chain(chorus, delay, reverb, distortion, Tone.Destination);
       db.ref('dates').on('value', async (snapshot) => {
+        if (!snapshot.exists()) {
+          document.getElementById("right").innerHTML = "Нет данных для проигрывания.";
+          return;
+        }
         const rawData = snapshot.val() || {};
         const dataList = Object.values(rawData);
         if (dataList.length === 0) {
@@ -203,4 +207,3 @@
   </script>
 </body>
 </html>
-
