@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <title>Death Melody</title>
+</head>
+<body style="font-family:sans-serif;max-width:400px;margin:40px auto;">
+  <h3>Введите даты</h3>
+  <input type="text" id="birth" placeholder="Дата рождения (напр. 190103)">
+  <input type="text" id="death" placeholder="Дата смерти (напр. 198812)">
+  <button onclick="addDates()">Добавить</button>
+  <p id="status"></p>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.7.77/Tone.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+
+  <script>
+    const firebaseConfig = {
+      apiKey: "AIzaSyD7W5jmN8chjqWYrsfFsewNfrp7t0eb-Jk",
+      authDomain: "deathmelody.firebaseapp.com",
+      databaseURL: "https://deathmelody-default-rtdb.asia-southeast1.firebasedatabase.app",
+      projectId: "deathmelody",
+      storageBucket: "deathmelody.firebasestorage.app",
+      messagingSenderId: "1093758086114",
+      appId: "1:1093758086114:web:0b2a22646eac474469a7bb"
+    };
+
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+    const notesData = [];
+
+    function convertNumberToNote(num) {
+      const notes = ["C4", "D4", "E4", "F4", "G4", "A4", "B4", "C5", "D5", "E5"];
+      return notes[num % notes.length];
+    }
+
+    function addDates() {
+      const birth = document.getElementById("birth").value.trim();
+      const death = document.getElementById("death").value.trim();
+      const digits = (birth + death).replace(/\D/g, '').split('').map(Number);
+
+      if (digits.length === 0) {
+        document.getElementById("status").textContent = "Введите корректные даты.";
+        return;
+      }
+
+      db.ref('dates').push(digits);
+      document.getElementById("status").textContent = "Данные добавлены!";
+    }
+
+    function playLoopFromFirebase() {
+      const synth = new Tone.Synth().toDestination();
+      let index = 0;
+
+      db.ref('dates').on('value', (snapshot) => {
+        const data = snapshot.val() || {};
+        notesData.length = 0;
+        for (let key in data) {
+          notesData.push(...data[key]);
+        }
+
+        if (Tone.Transport.state !== 'started') {
+          Tone.Transport.scheduleRepeat(() => {
+            if (notesData.length === 0) return;
+            const note = convertNumberToNote(notesData[index % notesData.length]);
+            synth.triggerAttackRelease(note, "8n");
+            index++;
+          }, "8n");
+
+          Tone.Transport.start();
+        }
+      });
+    }
+
+    window.addEventListener('load', async () => {
+      await Tone.start();
+      playLoopFromFirebase();
+    });
+  </script>
+</body>
+</html>
