@@ -231,8 +231,8 @@ addBtn.addEventListener('click', ()=>{
     statusEl.style.color='red';
     return;
   }
-  if(dDate.getTime() <= bDate.getTime()){
-    statusEl.textContent='Ошибка: дата смерти должна быть позже даты рождения.';
+  if(dDate.getTime() < bDate.getTime()){
+    statusEl.textContent='Ошибка: дата смерти раньше даты рождения.';
     statusEl.style.color='red';
     return;
   }
