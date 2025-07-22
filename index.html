@@ -179,8 +179,8 @@ let SPEED = 2;
 const DUR = {
   noteLen : 0.4,  // сек — длина ноты (до масштаба)
   randMin : 400,  // мс — мин. пауза между цифрами
-  randMax : 1400,  // мс — макс. пауза
-  pairGap : 2000*SPEED   // мс — пауза между парами дат
+  randMax : 1000,  // мс — макс. пауза
+  pairGap : 1200   // мс — пауза между парами дат
 };
 
 function scaled(ms){ return Math.round(ms * SPEED); }
