@@ -37,7 +37,6 @@
     <button id="addBtn">Добавить</button>
     <div id="status"></div>
     <div id="debugInfo">Ожидание старта…</div>
-
   </div>
 </div>
 
@@ -88,7 +87,6 @@ deathInput.addEventListener('input',()=>formatDateInput(deathInput));
 
 /* -------- Проверка дат -------- */
 function parseValidDate(str){
-  // формат ДД.ММ.ГГГГ
   const m = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(str);
   if(!m) return null;
   const [_,dd,mm,yyyy]=m;
@@ -98,53 +96,42 @@ function parseValidDate(str){
 }
 
 /* -------- Аудио -------- */
+let synth;
+let playingTimer=null;
+let timeline=[];
+let pointer=0;
+let isPlaying=false;
 
-// ====== УПРАВЛЕНИЕ СКОРОСТЬЮ / ВРЕМЕНАМИ ======
-// 1   = нормальная скорость
-// 2   = всё медленнее в 2 раза
-// 0.5 = всё быстрее в 2 раза
-let SPEED = 1;
+function initSynth(){
+  // ===== ПАРАМЕТРЫ, КОТОРЫЕ МОЖНО КРУТИТЬ =====
+  const FX = {
+    delayTime   : "8n",   // "8n", "4n", 0.5 и т.п.
+    feedback    : 0.55,   // 0–0.9
+    delayWet    : 0.6,    // 0–1
+    reverbRoom  : 0.75,   // 0–1  (Freeverb)
+    reverbDamp  : 1800,   // Гц
+    reverbWet   : 0.45,   // 0–1
+    lowpassFreq : 1800,   // Гц
+    distAmount  : 0.0
+  };
 
-const DUR = {
-  noteLen : 0.35,  // секунды — длина ноты до масштабирования
-  randMin : 1000,  // мс — минимальная пауза между цифрами
-  randMax : 3000,  // мс — максимальная пауза между цифрами
-  pairGap : 4000   // мс — пауза между парами дат
-};
+  const distortion = new Tone.Distortion(FX.distAmount);
+  const chorus     = new Tone.Chorus(4, 2.5, 0.2).start();
+  const delayFx    = new Tone.FeedbackDelay({delayTime:FX.delayTime, feedback:FX.feedback});
+  delayFx.wet.value = FX.delayWet;
 
-function scaled(ms){ return Math.round(ms * SPEED); }
+  const reverb     = new Tone.Freeverb({ roomSize: FX.reverbRoom, dampening: FX.reverbDamp });
+  reverb.wet.value = FX.reverbWet;
 
-function delayBetweenNotes(){
-  const base = DUR.randMin + Math.random()*(DUR.randMax - DUR.randMin);
-  return scaled(base);
-}
+  const lowpass    = new Tone.Filter(FX.lowpassFreq, "lowpass");
 
-// ====== ГЛАВНАЯ ФУНКЦИЯ ПРОИГРЫВАНИЯ ======
-function playStep(){
-  if (timeline.length === 0) {
-    debugInfo.textContent = 'Нет данных для проигрывания.';
-    isPlaying = false;
-    return;
-  }
-  if (pointer >= timeline.length) pointer = 0;
+  synth = new Tone.Synth({
+    oscillator:{ type:"triangle" }, // поменяй на "sine" для ещё мягче
+    envelope : { attack:0.15, decay:0.25, sustain:0.35, release:0.9 }
+  });
+  synth.portamento = 0.02;
 
-  const { digit, freq, span, pairEnd } = timeline[pointer++];
-
-  // Подсветка и отладка
-  if (span) span.classList.add('active');
-  debugInfo.textContent = Сейчас играет: ${digit} → ${freq.toFixed(2)} Гц;
-
-  // Нота
-  const now = Tone.now();
-  const lenSec = DUR.noteLen * SPEED;
-  synth.triggerAttackRelease(freq, lenSec, now);
-
-  // Снять подсветку после ноты
-  setTimeout(()=>{ if(span) span.classList.remove('active'); }, lenSec*1000 - 10);
-
-  // Пауза до следующей цифры
-  const wait = delayBetweenNotes() + (pairEnd ? scaled(DUR.pairGap) : 0);
-  playingTimer = setTimeout(playStep, wait);
+  synth.chain(lowpass, chorus, delayFx, reverb, distortion, Tone.Destination);
 }
 
 /* -------- Визуал + таймлайн -------- */
@@ -152,8 +139,7 @@ function buildVisualAndTimeline(list){
   rightPane.innerHTML='';
   timeline=[]; pointer=0;
 
-  // новые сверху
-  const showList = list.slice().reverse();
+  const showList = list.slice().reverse(); // новые сверху
 
   showList.forEach(item=>{
     const row = document.createElement('div');
@@ -163,7 +149,7 @@ function buildVisualAndTimeline(list){
     const dStr = item.death.slice(0,2)+'.'+item.death.slice(2,4)+'.'+item.death.slice(4);
     const text = `${bStr} - ${dStr}`;
 
-    const spans = [];
+    const spans=[];
     for(const ch of text){
       const span=document.createElement('span');
       span.textContent=ch;
@@ -173,7 +159,6 @@ function buildVisualAndTimeline(list){
     }
     rightPane.appendChild(row);
 
-    // добавляем в таймлайн цифры
     let si=0;
     const digits = (item.birth+item.death).split('').map(Number);
     digits.forEach((d,i)=>{
@@ -187,27 +172,24 @@ function buildVisualAndTimeline(list){
   });
 }
 
-/* -------- Проигрывание -------- */
-// ====== УПРАВЛЕНИЕ СКОРОСТЬЮ / ВРЕМЕНАМИ ======
-// 1   = нормальная скорость
-// 2   = всё медленнее в 2 раза
-// 0.5 = всё быстрее в 2 раза
+/* -------- Управление скоростью -------- */
+// 1   = нормально; 2 = медленнее; 0.5 = быстрее
 let SPEED = 1;
 
 const DUR = {
-  noteLen : 0.35,   // секунды — длина ноты до масштабирования
-  randMin : 1000,   // мс — минимальная пауза между цифрами
-  randMax : 3000,   // мс — максимальная пауза между цифрами
-  pairGap : 4000    // мс — пауза между парами дат
+  noteLen : 0.35,  // сек — длина ноты (до масштаба)
+  randMin : 1000,  // мс — мин. пауза между цифрами
+  randMax : 3000,  // мс — макс. пауза
+  pairGap : 4000   // мс — пауза между парами дат
 };
 
 function scaled(ms){ return Math.round(ms * SPEED); }
-
 function delayBetweenNotes(){
   const base = DUR.randMin + Math.random()*(DUR.randMax - DUR.randMin);
   return scaled(base);
 }
-// ====== ФУНКЦИЯ ПРОИГРЫВАНИЯ ======
+
+/* -------- Проигрывание -------- */
 function playStep(){
   if (timeline.length === 0) {
     debugInfo.textContent = 'Нет данных для проигрывания.';
@@ -218,19 +200,15 @@ function playStep(){
 
   const { digit, freq, span, pairEnd } = timeline[pointer++];
 
-  // Подсветка и отладка
   if (span) span.classList.add('active');
-  debugInfo.textContent = 'Сейчас играет: ${digit} → ${freq.toFixed(2)} Гц';
+  debugInfo.textContent = `Сейчас играет: ${digit} → ${freq.toFixed(2)} Гц`;
 
-  // Нота
   const now = Tone.now();
-  const lenSec = DUR.noteLen * SPEED; // длительность ноты с учётом скорости
+  const lenSec = DUR.noteLen * SPEED;
   synth.triggerAttackRelease(freq, lenSec, now);
 
-  // Снять подсветку чуть позже конца ноты
   setTimeout(()=>{ if(span) span.classList.remove('active'); }, lenSec*1000 - 10);
 
-  // Пауза до следующей цифры
   const wait = delayBetweenNotes() + (pairEnd ? scaled(DUR.pairGap) : 0);
   playingTimer = setTimeout(playStep, wait);
 }
@@ -253,7 +231,7 @@ datesRef.on('value', snap=>{
 
 /* -------- Старт -------- */
 startBtn.addEventListener('click', async ()=>{
-  await Tone.start(); // нужно для разблокировки аудио
+  await Tone.start();
   initSynth();
 
   startBtn.style.display='none';
@@ -285,13 +263,14 @@ addBtn.addEventListener('click', ()=>{
     statusEl.style.color='red';
     return;
   }
+  // Разрешаем один день, запрещаем только если смерть раньше
   if(dDate.getTime() < bDate.getTime()){
     statusEl.textContent='Ошибка: дата смерти раньше даты рождения.';
     statusEl.style.color='red';
     return;
   }
 
-  const bDigits = bStr.replace(/\D/g,''); // ДДММГГГГ
+  const bDigits = bStr.replace(/\D/g,'');
   const dDigits = dStr.replace(/\D/g,'');
 
   const digits = (bDigits + dDigits).split('').map(Number);
