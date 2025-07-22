@@ -32,8 +32,8 @@
   <button id="startButton">▶️ Старт</button>
 
   <div id="inputSection">
-    <input type="text" id="birth" placeholder="Дата рождения (напр. 190103)">
-    <input type="text" id="death" placeholder="Дата смерти (напр. 198812)">
+    <input type="text" id="birth" placeholder="Дата рождения (ДД.ММ.ГГГГ)" maxlength="10" oninput="formatDate(this)">
+    <input type="text" id="death" placeholder="Дата смерти (ДД.ММ.ГГГГ)" maxlength="10" oninput="formatDate(this)">
     <button onclick="addDates()">Добавить</button>
     <p id="status"></p>
   </div>
@@ -43,7 +43,7 @@
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 
   <script>
-    // Firebase config
+    // 🔧 Firebase config
     const firebaseConfig = {
       apiKey: "AIzaSyD7W5jmN8chjqWYrsfFsewNfrp7t0eb-Jk",
       authDomain: "deathmelody.firebaseapp.com",
@@ -56,55 +56,82 @@
 
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
-    const notesData = [];
 
-    function convertNumberToNote(num) {
-      const notes = ["C4", "D4", "E4", "F4", "G4", "A4", "B4", "C5", "D5", "E5"];
-      return notes[num % notes.length];
+    // 🎵 Микротональные частоты
+    const freqMap = [];
+    const minFreq = 32.703, maxFreq = 65.406;
+    for (let i = 0; i < 10; i++) {
+      freqMap.push(minFreq + i * ((maxFreq - minFreq) / 9));
+    }
+
+    // 🎛️ ЭФФЕКТЫ — вот тут можно менять настройки звучания:
+    const distortion = new Tone.Distortion(0.3).toDestination();  // ← Уровень искажений (0.0–1.0)
+    const chorus = new Tone.Chorus(4, 2.5, 0.3).start();          // ← Частота, задержка, глубина
+    const reverb = new Tone.Reverb({ decay: 4, preDelay: 0.1 }).connect(distortion); // ← Реверберация
+    const delay = new Tone.FeedbackDelay("8n", 0.3).connect(reverb);                 // ← Эхо
+
+    // 🔊 СИНТ — тут можно менять форму волны (звук инструмента):
+    const synth = new Tone.Oscillator({
+      type: "sine", // ← Можешь поменять на: "triangle", "square", "sawtooth"
+      frequency: 440
+    }).connect(chorus).connect(delay).start();
+
+    // 🎼 Утилиты
+    function convertNumberToFrequency(num) {
+      return freqMap[num % freqMap.length];
+    }
+
+    function formatDate(input) {
+      let val = input.value.replace(/\D/g, '').slice(0, 8);
+      let formatted = '';
+      if (val.length >= 2) formatted += val.slice(0,2) + '.';
+      if (val.length >= 4) formatted += val.slice(2,4) + '.';
+      if (val.length > 4) formatted += val.slice(4);
+      input.value = formatted;
     }
 
     function addDates() {
-      const birth = document.getElementById("birth").value.trim();
-      const death = document.getElementById("death").value.trim();
-      const digits = (birth + death).replace(/\D/g, '').split('').map(Number);
-
+      const birth = document.getElementById("birth").value.replace(/\D/g, '');
+      const death = document.getElementById("death").value.replace(/\D/g, '');
+      const digits = (birth + death).split('').map(Number);
       if (digits.length === 0) {
         document.getElementById("status").textContent = "Введите корректные даты.";
         return;
       }
-
       db.ref('dates').push(digits);
       document.getElementById("status").textContent = "Данные добавлены!";
     }
 
-    function startSoundAndPlay() {
-      const synth = new Tone.Synth().toDestination();
-      let index = 0;
+    function delayMs(ms) {
+      return new Promise(resolve => setTimeout(resolve, ms));
+    }
 
-      db.ref('dates').on('value', (snapshot) => {
+    function randomRange(min, max) {
+      return Math.floor(Math.random() * (max - min + 1)) + min;
+    }
+
+    async function playAllSequences() {
+      db.ref('dates').on('value', async (snapshot) => {
         const data = snapshot.val() || {};
-        notesData.length = 0;
-        for (let key in data) {
-          notesData.push(...data[key]);
-        }
+        const allSequences = Object.values(data);
 
-        // Только один раз запускаем цикл
-        if (Tone.Transport.state !== 'started') {
-          Tone.Transport.scheduleRepeat(() => {
-            if (notesData.length === 0) return;
-            const note = convertNumberToNote(notesData[index % notesData.length]);
-            synth.triggerAttackRelease(note, "8n");
-            index++;
-          }, "8n");
-
-          Tone.Transport.start();
+        while (true) {
+          for (let seq of allSequences) {
+for (let digit of seq) {
+              const freq = convertNumberToFrequency(digit);
+              synth.frequency.setValueAtTime(freq, Tone.now());
+              await Tone.start(); // безопасно
+              await delayMs(randomRange(400, 1000)); // рандомная пауза
+            }
+            await delayMs(1400); // пауза между блоками
+          }
         }
       });
     }
 
     document.getElementById("startButton").addEventListener("click", async () => {
       await Tone.start();
-      startSoundAndPlay();
+      playAllSequences();
 
       document.getElementById("startButton").style.display = "none";
       document.getElementById("inputSection").style.display = "flex";
