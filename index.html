@@ -126,7 +126,7 @@ function initSynth(){
   const lowpass    = new Tone.Filter(FX.lowpassFreq, "lowpass");
 
   synth = new Tone.Synth({
-    oscillator:{ type:"triangle" }, // поменяй на "sine" для ещё мягче
+    oscillator:{ type:"triangle" }, // форма волны
     envelope : { attack:0.15, decay:0.25, sustain:0.35, release:0.9 }
   });
   synth.portamento = 0.02;
@@ -174,13 +174,13 @@ function buildVisualAndTimeline(list){
 
 /* -------- Управление скоростью -------- */
 // 1   = нормально; 2 = медленнее; 0.5 = быстрее
-let SPEED = 1;
+let SPEED = 0.4;
 
 const DUR = {
   noteLen : 0.35,  // сек — длина ноты (до масштаба)
   randMin : 1000,  // мс — мин. пауза между цифрами
   randMax : 3000,  // мс — макс. пауза
-  pairGap : 4000   // мс — пауза между парами дат
+  pairGap : 4000*SPEED   // мс — пауза между парами дат
 };
 
 function scaled(ms){ return Math.round(ms * SPEED); }
