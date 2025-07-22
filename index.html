@@ -179,24 +179,50 @@ function buildVisualAndTimeline(list){
 }
 
 /* -------- Проигрывание -------- */
-function randomDelay(){ return Math.floor(Math.random()*(3000-1200)+1200); } // 1.2–3.0 сек
+// ====== УПРАВЛЕНИЕ СКОРОСТЬЮ / ВРЕМЕНАМИ ======
+// 1   = нормальная скорость
+// 2   = всё медленнее в 2 раза
+// 0.5 = всё быстрее в 2 раза
+let SPEED = 1;
 
+const DUR = {
+  noteLen : 0.35,   // секунды — длина ноты до масштабирования
+  randMin : 1000,   // мс — минимальная пауза между цифрами
+  randMax : 3000,   // мс — максимальная пауза между цифрами
+  pairGap : 4000    // мс — пауза между парами дат
+};
+
+function scaled(ms){ return Math.round(ms * SPEED); }
+
+function delayBetweenNotes(){
+  const base = DUR.randMin + Math.random()*(DUR.randMax - DUR.randMin);
+  return scaled(base);
+}
+// ====== ФУНКЦИЯ ПРОИГРЫВАНИЯ ======
 function playStep(){
-  if(timeline.length===0){
-    debugInfo.textContent='Нет данных для проигрывания.';
-    isPlaying=false;
+  if (timeline.length === 0) {
+    debugInfo.textContent = 'Нет данных для проигрывания.';
+    isPlaying = false;
     return;
   }
-  if(pointer>=timeline.length) pointer=0;
+  if (pointer >= timeline.length) pointer = 0;
 
-  const {digit,freq,span,pairEnd} = timeline[pointer++];
+  const { digit, freq, span, pairEnd } = timeline[pointer++];
 
-  if(span) span.classList.add('active');
-  debugInfo.textContent = `Сейчас играет: ${digit} → ${freq.toFixed(2)} Гц`;
-  synth.triggerAttackRelease(freq,"8n");
-  setTimeout(()=>{ if(span) span.classList.remove('active'); }, 250);
+  // Подсветка и отладка
+  if (span) span.classList.add('active');
+  debugInfo.textContent = Сейчас играет: ${digit} → ${freq.toFixed(2)} Гц;
 
-  const wait = randomDelay() + (pairEnd ? 4200 : 0);
+  // Нота
+  const now = Tone.now();
+  const lenSec = DUR.noteLen * SPEED; // длительность ноты с учётом скорости
+  synth.triggerAttackRelease(freq, lenSec, now);
+
+  // Снять подсветку чуть позже конца ноты
+  setTimeout(()=>{ if(span) span.classList.remove('active'); }, lenSec*1000 - 10);
+
+  // Пауза до следующей цифры
+  const wait = delayBetweenNotes() + (pairEnd ? scaled(DUR.pairGap) : 0);
   playingTimer = setTimeout(playStep, wait);
 }
 
