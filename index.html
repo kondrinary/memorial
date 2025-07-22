@@ -108,15 +108,40 @@ let pointer=0;
 let isPlaying=false;
 
 function initSynth(){
-  const distortion = new Tone.Distortion(0);
-  const chorus     = new Tone.Chorus(4, 2.5, 0.2).start();
-  const delayFx    = new Tone.FeedbackDelay("8n", 0.3);
-  const reverb     = new Tone.Reverb({ decay: 4, preDelay: 0.1 });
+  // === Настройки ===
+  const FX = {
+    delayTime: "2n",   // чем больше (например "4n" или 0.5), тем длиннее шаг эха
+    feedback: 0.9,    // 0–0.9: усиление повторов (эхо)
+    delayWet: 0.8,    // 0–1: сколько эффекта слышно
+    reverbDecay: 10,    // 1–10: длина хвоста реверберации
+    reverbWet: 0.6,   // 0–1: уровень реверба
+    lowpassFreq: 1000, // Гц: срез высоких частот для мягкости
+    distAmount: 0.0    // 0–1: искажения (0 для мягкости)
+  };
 
+  // === ЭФФЕКТЫ ===
+  const distortion = new Tone.Distortion(FX.distAmount);
+  const chorus     = new Tone.Chorus(4, 2.5, 0.2).start();
+  const delayFx    = new Tone.FeedbackDelay({
+    delayTime: FX.delayTime,
+    feedback:  FX.feedback,
+    wet:       FX.delayWet
+  });
+  const reverb     = new Tone.Reverb({
+    decay:    FX.reverbDecay,
+    preDelay: 0.08,
+    wet:      FX.reverbWet
+  });
+  const lowpass    = new Tone.Filter(FX.lowpassFreq, "lowpass");
+
+  // === СИНТ ===
   synth = new Tone.Synth({
-    oscillator:{ type:"triangle" }, // меняй тут тип волны
-    envelope:{ attack:0.1, decay:0.2, sustain:0.3, release:0.6 } // и огибающую
-  }).chain(chorus, delayFx, reverb, distortion, Tone.Destination);
+    oscillator:{ type:"sine" },          // triangle
+    envelope : { attack:0.18, decay:0.25, sustain:0.35, release:0.9 } // сглаженный звук
+  });
+
+  // === Цепочка: сначала фильтр (смягчает), потом хор, эхо, реверб ===
+  synth.chain(lowpass, chorus, delayFx, reverb, distortion, Tone.Destination);
 }
 
 /* -------- Визуал + таймлайн -------- */
