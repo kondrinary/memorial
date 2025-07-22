@@ -26,9 +26,9 @@
       padding: 15px 30px;
       font-size: 18px;
     }
-    button:disabled {
-      opacity: 0.4;
-      cursor: not-allowed;
+    #status {
+      font-weight: bold;
+      color: darkred;
     }
   </style>
 </head>
@@ -39,7 +39,7 @@
   <div id="inputSection">
     <input type="text" id="birth" placeholder="Дата рождения (ДД.ММ.ГГГГ)" maxlength="10">
     <input type="text" id="death" placeholder="Дата смерти (ДД.ММ.ГГГГ)" maxlength="10">
-    <button id="addBtn" disabled>Добавить</button>
+    <button id="addBtn">Добавить</button>
     <p id="status"></p>
   </div>
 
@@ -61,21 +61,13 @@
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
 
-    // Микротональная шкала: 10 шагов от C1 до C2
     const freqMap = [];
     const minFreq = 32.703, maxFreq = 65.406;
     for (let i = 0; i < 10; i++) {
       freqMap.push(minFreq + i * ((maxFreq - minFreq) / 9));
     }
 
-    const distortion = new Tone.Distortion(0.3);
-    const chorus = new Tone.Chorus(4, 2.5, 0.3).start();
-    const reverb = new Tone.Reverb({ decay: 4, preDelay: 0.1 });
-    const delay = new Tone.FeedbackDelay("8n", 0.3);
-
-    const synth = new Tone.Synth({
-      oscillator: { type: "sine" }
-    }).chain(chorus, delay, reverb, distortion, Tone.Destination);
+    let synth;
 
     function convertNumberToFrequency(num) {
       return freqMap[num % freqMap.length];
@@ -109,21 +101,21 @@
       return date && date.getMonth() + 1 === m;
     }
 
-    function validateForm() {
-      const birth = document.getElementById("birth").value;
-      const death = document.getElementById("death").value;
-      const isValid = isValidDate(birth) && isValidDate(death) &&
-        parseInt(death.replace(/\D/g, '')) > parseInt(birth.replace(/\D/g, ''));
-      document.getElementById("addBtn").disabled = !isValid;
-    }
-
     function addDates() {
-      const birth = document.getElementById("birth").value.replace(/\D/g, '');
-      const death = document.getElementById("death").value.replace(/\D/g, '');
+      const birthRaw = document.getElementById("birth").value;
+      const deathRaw = document.getElementById("death").value;
+      const birth = birthRaw.replace(/\D/g, '');
+      const death = deathRaw.replace(/\D/g, '');
+      const isValid = isValidDate(birthRaw) && isValidDate(deathRaw) && parseInt(death) > parseInt(birth);
+
+      if (!isValid) {
+        document.getElementById("status").textContent = "Ошибка: введите корректные даты.";
+        return;
+      }
+
       const digits = (birth + death).split('').map(Number);
       db.ref('dates').push(digits);
       document.getElementById("status").textContent = "Данные добавлены!";
-      document.getElementById("addBtn").disabled = true;
       document.getElementById("birth").value = '';
       document.getElementById("death").value = '';
     }
@@ -147,17 +139,30 @@
 
     document.getElementById("startButton").addEventListener("click", async () => {
       await Tone.start();
+
+      // создаём эффекты и синт только после клика
+      const distortion = new Tone.Distortion(0.3);
+      const chorus = new Tone.Chorus(4, 2.5, 0.3).start();
+      const reverb = new Tone.Reverb({ decay: 4, preDelay: 0.1 });
+      const delay = new Tone.FeedbackDelay("8n", 0.3);
+
+      synth = new Tone.Synth({
+        oscillator: { type: "sine" },
+        envelope: { attack: 0.3, decay: 0.2, sustain: 0.1, release: 0.5 }
+      }).chain(chorus, delay, reverb, distortion, Tone.Destination);
+
       playAllSequences();
+
       document.getElementById("startButton").style.display = "none";
       document.getElementById("inputSection").style.display = "flex";
     });
 
-    // Назначаем слушатели для форматирования и валидации ввода
+    // слушатели ввода
     document.getElementById("birth").addEventListener("input", function() {
-      formatDate(this); validateForm();
+      formatDate(this);
     });
     document.getElementById("death").addEventListener("input", function() {
-      formatDate(this); validateForm();
+      formatDate(this);
     });
     document.getElementById("addBtn").addEventListener("click", addDates);
   </script>
