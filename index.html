@@ -17,14 +17,13 @@
       gap: 10px;
       margin-top: 20px;
     }
-    input {
-      padding: 8px;
+    input, button {
+      padding: 10px;
       font-size: 16px;
     }
-    button {
-      padding: 10px 20px;
-      font-size: 16px;
-      cursor: pointer;
+    #startButton {
+      padding: 15px 30px;
+      font-size: 18px;
     }
   </style>
 </head>
@@ -44,6 +43,7 @@
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 
   <script>
+    // Firebase config
     const firebaseConfig = {
       apiKey: "AIzaSyD7W5jmN8chjqWYrsfFsewNfrp7t0eb-Jk",
       authDomain: "deathmelody.firebaseapp.com",
@@ -77,7 +77,7 @@
       document.getElementById("status").textContent = "Данные добавлены!";
     }
 
-    function playLoopFromFirebase() {
+    function startSoundAndPlay() {
       const synth = new Tone.Synth().toDestination();
       let index = 0;
 
@@ -88,6 +88,7 @@
           notesData.push(...data[key]);
         }
 
+        // Только один раз запускаем цикл
         if (Tone.Transport.state !== 'started') {
           Tone.Transport.scheduleRepeat(() => {
             if (notesData.length === 0) return;
@@ -103,7 +104,7 @@
 
     document.getElementById("startButton").addEventListener("click", async () => {
       await Tone.start();
-      playLoopFromFirebase();
+      startSoundAndPlay();
 
       document.getElementById("startButton").style.display = "none";
       document.getElementById("inputSection").style.display = "flex";
