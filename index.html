@@ -187,6 +187,10 @@
       db.ref('dates').on('value', async (snapshot) => {
         const rawData = snapshot.val() || {};
         const dataList = Object.values(rawData);
+        if (dataList.length === 0) {
+          document.getElementById("right").innerHTML = "Нет данных для проигрывания.";
+          return;
+        }
         renderDates(dataList);
         playSequences(dataList);
       });
