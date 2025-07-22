@@ -164,6 +164,7 @@
     let playbackStarted = false;
 let playLoop = null;
 async function playSequences(dataList) {
+  await Tone.start();
   if (!dataList || dataList.length === 0) return;
   if (playbackStarted) return;
   playbackStarted = true;
