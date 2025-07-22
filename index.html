@@ -1,91 +1,61 @@
-
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-  <meta charset="UTF-8">
+  <meta charset="UTF-8" />
   <title>Death Melody</title>
-  <style>
-    body {
-      margin: 0;
-      font-family: sans-serif;
-      display: flex;
-      height: 100vh;
-    }
 
-    /* Левая часть — форма */
-    #left {
-      width: 50%;
-      background: #ffffff;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: flex-start;
-      padding-top: 50px;
-    }
-
-    #inputSection {
-      display: none;
-      flex-direction: column;
-      gap: 10px;
-      margin-top: 20px;
-    }
-
-    input, button {
-      padding: 10px;
-      font-size: 16px;
-    }
-
-    #startButton {
-      padding: 15px 30px;
-      font-size: 18px;
-    }
-
-    #status {
-      font-weight: bold;
-      color: darkred;
-    }
-
-    /* Правая часть — визуализация */
-    #right {
-      width: 50%;
-      background: #000000;
-      color: white;
-      padding: 20px;
-      font-size: 18px;
-      overflow-y: auto;
-      white-space: pre-wrap;
-      font-family: monospace;
-    }
-
-    .digit {
-      transition: color 0.2s;
-    }
-
-    .digit.active {
-      color: #00ff00;
-    }
-  </style>
-</head>
-<body>
-
-  <div id="left">
-    <button id="startButton">▶️ Старт</button>
-
-    <div id="inputSection">
-      <input type="text" id="birth" placeholder="Дата рождения (ДД.ММ.ГГГГ)" maxlength="10">
-      <input type="text" id="death" placeholder="Дата смерти (ДД.ММ.ГГГГ)" maxlength="10">
-      <button id="addBtn">Добавить</button>
-      <p id="status"></p>
-    </div>
-  </div>
-
-  <div id="right" id="visual"></div>
-
+  <!-- Tone.js -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.7.77/Tone.js"></script>
+
+  <!-- Firebase (compat, чтобы проще) -->
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 
+  <style>
+    body{
+      margin:0; font-family:sans-serif; display:flex; height:100vh;
+    }
+    #left,#right{ width:50%; box-sizing:border-box; padding:20px;}
+    #left{ background:#fff; display:flex; flex-direction:column; align-items:center;}
+    #right{ background:#000; color:#fff; font-family:monospace; font-size:18px; line-height:1.4; overflow-y:auto; white-space:pre-wrap;}
+    #formSection{ display:none; width:100%; max-width:360px; }
+    input{ width:100%; padding:8px; font-size:16px; margin-bottom:10px;}
+    button{ padding:10px 18px; font-size:16px; cursor:pointer;}
+    .digit{ color:#fff; transition:color .1s;}
+    .digit.active{ color:#00ff00; font-weight:bold;}
+    .date-row{ margin-bottom:12px;}
+    #debugInfo{ margin-top:10px; font-size:14px; color:#444;}
+  </style>
+</head>
+<body>
+  <!-- Левая колонка -->
+  <div id="left">
+    <button id="startBtn">▶️ Старт</button>
+
+    <div id="formSection">
+      <input id="birthInput" placeholder="Дата рождения (ДД.ММ.ГГГГ)" maxlength="10">
+      <input id="deathInput" placeholder="Дата смерти (ДД.ММ.ГГГГ)" maxlength="10">
+      <button id="addBtn">Добавить</button>
+      <div id="status"></div>
+
+      <!-- Отладка -->
+      <div id="debugInfo">Ожидание старта…</div>
+
+      <!-- (Опционально) Блок настроек синтезатора — значения меняй смело
+      <div style="margin-top:15px;font-size:12px;color:#777;">
+        oscillator.type: sine/triangle/square/sawtooth<br>
+        envelope.attack (0–2), decay (0–2), sustain (0–1), release (0–5)<br>
+        reverb.decay (1–10), delay.feedback (0–0.9)
+      </div>
+      -->
+    </div>
+  </div>
+
+  <!-- Правая колонка (партитура) -->
+  <div id="right"></div>
+
   <script>
+    // ---------- Firebase ----------
     const firebaseConfig = {
       apiKey: "AIzaSyD7W5jmN8chjqWYrsfFsewNfrp7t0eb-Jk",
       authDomain: "deathmelody.firebaseapp.com",
@@ -95,141 +65,220 @@
       messagingSenderId: "1093758086114",
       appId: "1:1093758086114:web:0b2a22646eac474469a7bb"
     };
-
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
+    const datesRef = db.ref('dates');
 
-    const freqMap = [];
-    const minFreq = 32.703, maxFreq = 65.406;
-    for (let i = 0; i < 10; i++) {
-      freqMap.push(minFreq + i * ((maxFreq - minFreq) / 9));
+    // ---------- Микротональность ----------
+    // 10 равных делений по частоте между C1 (32.703 Гц) и C2 (65.406 Гц)
+    const FREQ_MIN = 32.703;
+    const FREQ_MAX = 65.406;
+    const freqMap = Array.from({length:10}, (_,i)=>
+      FREQ_MIN + i * (FREQ_MAX - FREQ_MIN) / 9
+    );
+
+    function digitToFreq(d){ return freqMap[d]; }
+
+    // ---------- UI элементы ----------
+    const startBtn   = document.getElementById('startBtn');
+    const formSection= document.getElementById('formSection');
+    const birthInput = document.getElementById('birthInput');
+    const deathInput = document.getElementById('deathInput');
+    const addBtn     = document.getElementById('addBtn');
+    const statusEl   = document.getElementById('status');
+    const debugInfo  = document.getElementById('debugInfo');
+    const rightPane  = document.getElementById('right');
+
+    // ---------- Форматирование даты при вводе ----------
+    function formatDateInput(el){
+      let v = el.value.replace(/\D/g,'').slice(0,8);
+      let out = '';
+      if(v.length>0) out += v.slice(0,2);
+      if(v.length>=3) out += '.'+v.slice(2,4);
+      if(v.length>=5) out += '.'+v.slice(4,8);
+      el.value = out;
+    }
+    birthInput.addEventListener('input',()=>formatDateInput(birthInput));
+    deathInput.addEventListener('input',()=>formatDateInput(deathInput));
+
+    // ---------- Валидация ----------
+    function isValidDateStr(str){
+      const clean = str.replace(/\D/g,'');
+      if(clean.length!==8) return false;
+      const d = +clean.slice(0,2);
+      const m = +clean.slice(2,4);
+      const y = +clean.slice(4);
+      if(m<1||m>12||d<1||d>31||y<1850||y>new Date().getFullYear()) return false;
+      const test = new Date(`${y}-${m}-${d}`);
+      return (test.getMonth()+1===m);
     }
 
-    let synth;
-    let digitElements = [];
+    // ---------- Добавление дат ----------
+    addBtn.addEventListener('click', ()=>{
+      const bVis = birthInput.value;
+      const dVis = deathInput.value;
+      const b = bVis.replace(/\D/g,'');
+      const d = dVis.replace(/\D/g,'');
 
-    function convertNumberToFrequency(num) {
-      return freqMap[num % freqMap.length];
-    }
-
-    function delayMs(ms) {
-      return new Promise(resolve => setTimeout(resolve, ms));
-    }
-
-    function randomRange(min, max) {
-      return Math.floor(Math.random() * (max - min + 1)) + min;
-    }
-
-    function formatDate(input) {
-      let val = input.value.replace(/\D/g, '').slice(0, 8);
-      let result = '';
-      if (val.length > 0) result += val.slice(0, 2);
-      if (val.length >= 3) result += '.' + val.slice(2, 4);
-      if (val.length >= 5) result += '.' + val.slice(4, 8);
-      input.value = result;
-    }
-
-    function isValidDate(str) {
-      const cleaned = str.replace(/\D/g, '');
-      if (cleaned.length !== 8) return false;
-      const d = parseInt(cleaned.slice(0,2));
-      const m = parseInt(cleaned.slice(2,4));
-      const y = parseInt(cleaned.slice(4));
-      if (m < 1 || m > 12 || d < 1 || d > 31 || y < 1850 || y > new Date().getFullYear()) return false;
-      const date = new Date(`${y}-${m}-${d}`);
-      return date && date.getMonth() + 1 === m;
-    }
-
-    function addDates() {
-      const birthRaw = document.getElementById("birth").value;
-      const deathRaw = document.getElementById("death").value;
-      const birth = birthRaw.replace(/\D/g, '');
-      const death = deathRaw.replace(/\D/g, '');
-      const isValid = isValidDate(birthRaw) && isValidDate(deathRaw) && parseInt(death) > parseInt(birth);
-
-      if (!isValid) {
-        document.getElementById("status").textContent = "Ошибка: введите корректные даты.";
+      if(!isValidDateStr(bVis) || !isValidDateStr(dVis) || +d<=+b){
+        statusEl.textContent = 'Ошибка: проверьте формат и хронологию.';
+        statusEl.style.color = 'red';
         return;
       }
 
-      const digits = (birth + death).split('').map(Number);
-      db.ref('dates').push(digits);
-      document.getElementById("status").textContent = "Данные добавлены!";
-      document.getElementById("birth").value = '';
-      document.getElementById("death").value = '';
+      const digits = (b+d).split('').map(n=>+n);
+      datesRef.push({ birth:b, death:d, digits });
+      statusEl.textContent = 'Добавлено!';
+      statusEl.style.color = 'green';
+      birthInput.value = '';
+      deathInput.value  = '';
+    });
+
+    // ---------- Аудио ----------
+    let synth;           // один синт
+    let reverb, delayFx, chorus, distortion;
+    let playTimer = null;   // current setTimeout id
+    let timeline = [];      // [{digit, freq, span, pauseAfterPair}]
+    let playing = false;
+
+    // Создание синта после клика (чтобы не было «пика»)
+    function initSynth(){
+      // Настройки, которые можно менять:
+      //  oscillator.type: "sine","triangle","square","sawtooth"
+      //  envelope.attack/decay/sustain/release
+      //  reverb.decay, delayFx.feedback, chorus.frequency, distortion.distortion
+      distortion = new Tone.Distortion(0.0);     // 0–1
+      chorus     = new Tone.Chorus(4, 2.5, 0.2).start(); // freq, delayTime(ms), depth(0–1)
+      delayFx    = new Tone.FeedbackDelay("8n", 0.3); // time, feedback
+      reverb     = new Tone.Reverb({ decay: 4, preDelay: 0.1 });
+      synth      = new Tone.Synth({
+        oscillator:{ type:"triangle" },
+        envelope:{ attack:0.1, decay:0.2, sustain:0.3, release:0.6 }
+      }).chain(chorus, delayFx, reverb, distortion, Tone.Destination);
     }
 
-    function renderDates(allSequences) {
-      const visual = document.getElementById("right");
-      visual.innerHTML = '';
-      digitElements = [];
+    // Строим визуал и таймлайн
+    function buildVisualAndTimeline(dataArr){
+      rightPane.innerHTML = '';
+      timeline = [];
 
-      for (let seq of allSequences.slice().reverse()) {
-        const row = document.createElement("div");
-        row.style.marginBottom = "10px";
-        const digits = seq.map(d => {
-          const span = document.createElement("span");
-          span.textContent = d;
-          span.classList.add("digit");
-          row.appendChild(span);
-          digitElements.push(span);
-          return span;
-        });
-        visual.appendChild(row);
+      // Новые сверху:
+      const arr = dataArr.slice().reverse();
+
+      for(const item of arr){
+        const row = document.createElement('div');
+        row.className = 'date-row';
+
+        const birthVis = item.birth.slice(0,2)+'.'+item.birth.slice(2,4)+'.'+item.birth.slice(4);
+        const deathVis = item.death.slice(0,2)+'.'+item.death.slice(2,4)+'.'+item.death.slice(4);
+        const str = `${birthVis} - ${deathVis}`;
+
+        // Пройдёмся по строке, добавим span'ы
+        const digitSpans = [];
+        for(const ch of str){
+          const s = document.createElement('span');
+          s.textContent = ch;
+          if(/\d/.test(ch)) s.classList.add('digit');
+          row.appendChild(s);
+          digitSpans.push(s);
+        }
+        rightPane.appendChild(row);
+
+        // Построим timeline только из цифр
+        const digits = (item.birth + item.death).split('').map(Number);
+        let si = 0;
+        for(const d of digits){
+          // Найдём следующий span-цифру
+          let spanForDigit = null;
+          while(si < digitSpans.length){
+            if(digitSpans[si].classList.contains('digit')){
+              spanForDigit = digitSpans[si];
+              si++;
+              break;
+            }
+            si++;
+          }
+
+          timeline.push({
+            digit: d,
+            freq: digitToFreq(d),
+            span: spanForDigit
+          });
+        }
+
+        // Пометим конец пары (для паузы 1.4*3 = 4.2 сек)
+        if(timeline.length>0) timeline[timeline.length-1].pairEnd = true;
       }
     }
 
-    async function playAllSequences() {
-      db.ref('dates').on('value', async (snapshot) => {
-        const data = snapshot.val() || {};
-        const allSequences = Object.values(data);
-        renderDates(allSequences);
+    // Проигрывание по таймлайну без while(true)
+    let pointer = 0;
+    function playStep(){
+      if(timeline.length===0){
+        debugInfo.textContent = 'Нет данных для проигрывания.';
+        playing = false;
+        return;
+      }
+      if(pointer >= timeline.length) pointer = 0;
 
-        while (true) {
-          let offset = 0;
-          for (let seq of allSequences) {
-            for (let digit of seq) {
-              const freq = convertNumberToFrequency(digit);
-              const el = digitElements[offset];
-              if (el) el.classList.add("active");
-              synth.triggerAttackRelease(freq, "8n");
-              await delayMs(randomRange(1200, 3000));
-              if (el) el.classList.remove("active");
-              offset++;
-            }
-            await delayMs(4200);
-          }
-        }
-      });
+      const item = timeline[pointer];
+      pointer++;
+
+      // Подсветка и отладка
+      if(item.span) item.span.classList.add('active');
+      debugInfo.textContent = `Сейчас играет: ${item.digit} → ${item.freq.toFixed(2)} Гц`;
+
+      // Звук
+      synth.triggerAttackRelease(item.freq, "8n");
+
+      // Убираем подсветку чуть позже
+      setTimeout(()=>{ if(item.span) item.span.classList.remove('active'); }, 250);
+
+      // Задержка
+      const baseDelay = Math.floor(Math.random()* (3000-1200) + 1200); // 1.2–3.0 сек
+      const pause = item.pairEnd ? baseDelay + 4200 : baseDelay;
+
+      playTimer = setTimeout(playStep, pause);
     }
 
-    document.getElementById("startButton").addEventListener("click", async () => {
+    // Запуск после клика
+    startBtn.addEventListener('click', async ()=>{
       await Tone.start();
+      initSynth();
 
-      const distortion = new Tone.Distortion(0.05);
-      const chorus = new Tone.Chorus(6, 3.5, 0.2).start();
-      const reverb = new Tone.Reverb({ decay: 6, preDelay: 0.2 });
-      const delay = new Tone.FeedbackDelay("8n", 0.4);
+      startBtn.style.display = 'none';
+      formSection.style.display = 'block';
 
-      synth = new Tone.Synth({
-        oscillator: { type: "triangle" },
-        envelope: { attack: 0.2, decay: 0.3, sustain: 0.4, release: 0.6 }
-      }).chain(chorus, delay, reverb, distortion, Tone.Destination);
+      // Подписка на базу
+      datesRef.on('value', snapshot=>{
+        const data = snapshot.val() || {};
+        const list = Object.values(data);
 
-      playAllSequences();
+        // Если нет данных
+        if(list.length===0){
+          rightPane.innerHTML = 'Нет данных для проигрывания.';
+          timeline = [];
+          pointer = 0;
+          if(playTimer) clearTimeout(playTimer);
+          playing = false;
+          return;
+        }
 
-      document.getElementById("startButton").style.display = "none";
-      document.getElementById("inputSection").style.display = "flex";
+        // Перестраиваем визуал и таймлайн
+        buildVisualAndTimeline(list);
+
+        // Перезапускаем проигрывание
+        pointer = 0;
+        if(playTimer) clearTimeout(playTimer);
+        if(!playing){
+          playing = true;
+          playStep();
+        } else {
+          // уже играем — просто начнём с новой таймлайна
+          playStep();
+        }
+      });
     });
-
-    document.getElementById("birth").addEventListener("input", function() {
-      formatDate(this);
-    });
-    document.getElementById("death").addEventListener("input", function() {
-      formatDate(this);
-    });
-    document.getElementById("addBtn").addEventListener("click", addDates);
   </script>
-
 </body>
 </html>
