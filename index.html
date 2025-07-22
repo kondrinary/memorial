@@ -25,6 +25,10 @@
       padding: 15px 30px;
       font-size: 18px;
     }
+    button:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
   </style>
 </head>
 <body>
@@ -32,9 +36,9 @@
   <button id="startButton">▶️ Старт</button>
 
   <div id="inputSection">
-    <input type="text" id="birth" placeholder="Дата рождения (ДД.ММ.ГГГГ)" maxlength="10" oninput="formatDate(this)">
-    <input type="text" id="death" placeholder="Дата смерти (ДД.ММ.ГГГГ)" maxlength="10" oninput="formatDate(this)">
-    <button onclick="addDates()">Добавить</button>
+    <input type="text" id="birth" placeholder="Дата рождения (ДД.ММ.ГГГГ)" maxlength="10" oninput="formatDate(this); validateForm();">
+    <input type="text" id="death" placeholder="Дата смерти (ДД.ММ.ГГГГ)" maxlength="10" oninput="formatDate(this); validateForm();">
+    <button id="addBtn" onclick="addDates()" disabled>Добавить</button>
     <p id="status"></p>
   </div>
 
@@ -43,7 +47,6 @@
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 
   <script>
-    // 🔧 Firebase config
     const firebaseConfig = {
       apiKey: "AIzaSyD7W5jmN8chjqWYrsfFsewNfrp7t0eb-Jk",
       authDomain: "deathmelody.firebaseapp.com",
@@ -57,28 +60,33 @@
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
 
-    // 🎵 Микротональные частоты
+    // 🎵 микротональность
     const freqMap = [];
     const minFreq = 32.703, maxFreq = 65.406;
     for (let i = 0; i < 10; i++) {
       freqMap.push(minFreq + i * ((maxFreq - minFreq) / 9));
     }
 
-    // 🎛️ ЭФФЕКТЫ — вот тут можно менять настройки звучания:
-    const distortion = new Tone.Distortion(0.3).toDestination();  // ← Уровень искажений (0.0–1.0)
-    const chorus = new Tone.Chorus(4, 2.5, 0.3).start();          // ← Частота, задержка, глубина
-    const reverb = new Tone.Reverb({ decay: 4, preDelay: 0.1 }).connect(distortion); // ← Реверберация
-    const delay = new Tone.FeedbackDelay("8n", 0.3).connect(reverb);                 // ← Эхо
-
-    // 🔊 СИНТ — тут можно менять форму волны (звук инструмента):
+    // 🎛 эффекты
+    const distortion = new Tone.Distortion(0.3).toDestination();
+    const chorus = new Tone.Chorus(4, 2.5, 0.3).start();
+    const reverb = new Tone.Reverb({ decay: 4, preDelay: 0.1 }).connect(distortion);
+    const delay = new Tone.FeedbackDelay("8n", 0.3).connect(reverb);
     const synth = new Tone.Oscillator({
-      type: "sine", // ← Можешь поменять на: "triangle", "square", "sawtooth"
+      type: "sine", // можешь поменять на "square", "triangle", "sawtooth"
       frequency: 440
     }).connect(chorus).connect(delay).start();
 
-    // 🎼 Утилиты
     function convertNumberToFrequency(num) {
       return freqMap[num % freqMap.length];
+    }
+
+    function delayMs(ms) {
+      return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    function randomRange(min, max) {
+      return Math.floor(Math.random() * (max - min + 1)) + min;
     }
 
     function formatDate(input) {
@@ -90,24 +98,44 @@
       input.value = formatted;
     }
 
+    function isValidDate(str) {
+      const cleaned = str.replace(/\D/g, '');
+      if (cleaned.length !== 8) return false;
+      const d = parseInt(cleaned.slice(0,2));
+      const m = parseInt(cleaned.slice(2,4));
+      const y = parseInt(cleaned.slice(4));
+      if (m < 1  m > 12  d < 1  d > 31  y < 1850 || y > new Date().getFullYear()) return false;
+      const date = new Date(`${y}-${m}-${d}`);
+      return date && date.getMonth() + 1 === m;
+    }
+
+    function validateForm() {
+      const birthRaw = document.getElementById("birth").value;
+      const deathRaw = document.getElementById("death").value;
+      const birthValid = isValidDate(birthRaw);
+      const deathValid = isValidDate(deathRaw);
+      if (!birthValid || !deathValid) {
+        document.getElementById("addBtn").disabled = true;
+        return;
+      }
+      const b = birthRaw.replace(/\D/g, '');
+      const d = deathRaw.replace(/\D/g, '');
+      if (parseInt(d) <= parseInt(b)) {
+        document.getElementById("addBtn").disabled = true;
+        return;
+      }
+      document.getElementById("addBtn").disabled = false;
+    }
+
     function addDates() {
       const birth = document.getElementById("birth").value.replace(/\D/g, '');
       const death = document.getElementById("death").value.replace(/\D/g, '');
       const digits = (birth + death).split('').map(Number);
-      if (digits.length === 0) {
-        document.getElementById("status").textContent = "Введите корректные даты.";
-        return;
-      }
       db.ref('dates').push(digits);
       document.getElementById("status").textContent = "Данные добавлены!";
-    }
-
-    function delayMs(ms) {
-      return new Promise(resolve => setTimeout(resolve, ms));
-    }
-
-    function randomRange(min, max) {
-      return Math.floor(Math.random() * (max - min + 1)) + min;
+      document.getElementById("addBtn").disabled = true;
+      document.getElementById("birth").value = '';
+      document.getElementById("death").value = '';
     }
 
     async function playAllSequences() {
@@ -120,10 +148,9 @@
             for (let digit of seq) {
               const freq = convertNumberToFrequency(digit);
               synth.frequency.setValueAtTime(freq, Tone.now());
-              await Tone.start(); // безопасно
-              await delayMs(randomRange(400, 1000)); // рандомная пауза
+              await delayMs(randomRange(1200, 3000)); // 🔁 увеличенные задержки между нотами (x3)
             }
-            await delayMs(1400); // пауза между блоками
+            await delayMs(1400 * 3); // 🔁 увеличенная пауза между наборами
           }
         }
       });
@@ -132,7 +159,6 @@
     document.getElementById("startButton").addEventListener("click", async () => {
       await Tone.start();
       playAllSequences();
-
       document.getElementById("startButton").style.display = "none";
       document.getElementById("inputSection").style.display = "flex";
     });
