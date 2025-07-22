@@ -37,9 +37,9 @@
   <button id="startButton">▶️ Старт</button>
 
   <div id="inputSection">
-    <input type="text" id="birth" placeholder="Дата рождения (ДД.ММ.ГГГГ)" maxlength="10" oninput="formatDate(this); validateForm();">
-    <input type="text" id="death" placeholder="Дата смерти (ДД.ММ.ГГГГ)" maxlength="10" oninput="formatDate(this); validateForm();">
-    <button id="addBtn" onclick="addDates()" disabled>Добавить</button>
+    <input type="text" id="birth" placeholder="Дата рождения (ДД.ММ.ГГГГ)" maxlength="10">
+    <input type="text" id="death" placeholder="Дата смерти (ДД.ММ.ГГГГ)" maxlength="10">
+    <button id="addBtn" disabled>Добавить</button>
     <p id="status"></p>
   </div>
 
@@ -61,21 +61,21 @@
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
 
-    // 🎵 Микротональность: 10 равных частотных шагов между C1 и C2 (не нотные!)
+    // Микротональная шкала: 10 шагов от C1 до C2
     const freqMap = [];
     const minFreq = 32.703, maxFreq = 65.406;
     for (let i = 0; i < 10; i++) {
       freqMap.push(minFreq + i * ((maxFreq - minFreq) / 9));
     }
 
-    const distortion = new Tone.Distortion(0.3).toDestination();
+    const distortion = new Tone.Distortion(0.3);
     const chorus = new Tone.Chorus(4, 2.5, 0.3).start();
-    const reverb = new Tone.Reverb({ decay: 4, preDelay: 0.1 }).connect(distortion);
-    const delay = new Tone.FeedbackDelay("8n", 0.3).connect(reverb);
-    const synth = new Tone.Oscillator({
-      type: "sine",
-      frequency: 440
-    }).connect(chorus).connect(delay).start();
+    const reverb = new Tone.Reverb({ decay: 4, preDelay: 0.1 });
+    const delay = new Tone.FeedbackDelay("8n", 0.3);
+
+    const synth = new Tone.Synth({
+      oscillator: { type: "sine" }
+    }).chain(chorus, delay, reverb, distortion, Tone.Destination);
 
     function convertNumberToFrequency(num) {
       return freqMap[num % freqMap.length];
@@ -110,21 +110,11 @@
     }
 
     function validateForm() {
-      const birthRaw = document.getElementById("birth").value;
-      const deathRaw = document.getElementById("death").value;
-      const birthValid = isValidDate(birthRaw);
-      const deathValid = isValidDate(deathRaw);
-      if (!birthValid || !deathValid) {
-        document.getElementById("addBtn").disabled = true;
-        return;
-      }
-      const b = birthRaw.replace(/\D/g, '');
-      const d = deathRaw.replace(/\D/g, '');
-      if (parseInt(d) <= parseInt(b)) {
-        document.getElementById("addBtn").disabled = true;
-        return;
-      }
-      document.getElementById("addBtn").disabled = false;
+      const birth = document.getElementById("birth").value;
+      const death = document.getElementById("death").value;
+      const isValid = isValidDate(birth) && isValidDate(death) &&
+        parseInt(death.replace(/\D/g, '')) > parseInt(birth.replace(/\D/g, ''));
+      document.getElementById("addBtn").disabled = !isValid;
     }
 
     function addDates() {
@@ -142,15 +132,14 @@
       db.ref('dates').on('value', async (snapshot) => {
         const data = snapshot.val() || {};
         const allSequences = Object.values(data);
-
         while (true) {
           for (let seq of allSequences) {
             for (let digit of seq) {
               const freq = convertNumberToFrequency(digit);
-              synth.frequency.setValueAtTime(freq, Tone.now());
-              await delayMs(randomRange(1200, 3000)); // пауза между цифрами
+              synth.triggerAttackRelease(freq, "8n");
+              await delayMs(randomRange(1200, 3000));
             }
-            await delayMs(4200); // пауза между парами дат
+            await delayMs(4200);
           }
         }
       });
@@ -162,6 +151,15 @@
       document.getElementById("startButton").style.display = "none";
       document.getElementById("inputSection").style.display = "flex";
     });
+
+    // Назначаем слушатели для форматирования и валидации ввода
+    document.getElementById("birth").addEventListener("input", function() {
+      formatDate(this); validateForm();
+    });
+    document.getElementById("death").addEventListener("input", function() {
+      formatDate(this); validateForm();
+    });
+    document.getElementById("addBtn").addEventListener("click", addDates);
   </script>
 
 </body>
