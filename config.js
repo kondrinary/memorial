@@ -3,52 +3,53 @@ window.AppConfig = {
 
   CLOCK: {
     USE_FIREBASE_OFFSET: true,         // .info/serverTimeOffset
-    USE_HTTP_TIME: true,               // HTTP-«NTP» как доп. источник
+    USE_HTTP_TIME: true,               // HTTP-UTC (worldtimeapi) как второй источник
     HTTP_URL: 'https://worldtimeapi.org/api/timezone/Etc/UTC',
-    RESYNC_SEC: 60,                    // как часто уточнять HTTP-время
-    SLEW_MS: 1500,                     // плавное подтягивание смещения
-    JITTER_MS: 8                       // игнорировать микрошум offset’а
+    RESYNC_SEC: 60,                    // переоценка HTTP-UTC раз в минуту
+    SLEW_MS: 1500,                     // плавная подстройка offset без скачка
+    JITTER_MS: 8                       // игнорировать шум до ±8 мс
   },
 
-  // === РОВНАЯ СЕТКА (индекс по времени, а не по длительностям) ===
+  // РОВНАЯ СЕТКА (индекс только из времени)
   SYNC: {
-    GRID_MS: 700   // длина шага сетки (подбери своё значение при желании)
+    GRID_MS: 700                       // длина шага сетки (подбери при желании)
   },
 
-  // === ОКНО АКТИВАЦИИ НОВЫХ ЗАПИСЕЙ ===
-  // Новые записи из БД попадают в игру на общей границе окна.
+  // ОКНО АКТИВАЦИИ НОВЫХ ЗАПИСЕЙ (чтобы append был синхронный)
   WINDOW: {
-    MS: 1000,      // окно 1 секунда (вместо минуты)
-    DELAY_MS: 200  // маленькая защитная задержка на сетевые лаги
+    MS: 1000,      // окно 1 секунда
+    DELAY_MS: 200  // защитная задержка на сеть
   },
 
-  // Скорость воспроизведения (влияет на длину ноты и FX, НЕ на GRID_MS)
+  // Скорость (влияет на длительность ноты/FX, НЕ на сетку)
   SPEED: 1,
 
   // Кнопка тестовой записи
   ENABLE_SEED: true,
 
-  // Базовые метки времени (опорная дата)
+  // Синхронизация
   SYNC_ENABLED: true,
-  SYNC_EPOCH_MS: Date.UTC(2025,0,1,0,0,0),
+  SYNC_EPOCH_MS: Date.UTC(2025,0,1,0,0,0), // опорное UTC-время
   SYNC_SEED: 123456789,
   RANDOM_MODE: 'seeded',
 
   // Длительности/FX
   DUR: {
-    noteLen: 0.40, // сек — длительность ноты
-    randMin: 600,  // (не влияет на сетку; можно оставить)
+    noteLen: 0.40, // сек
+    randMin: 600,  // мс (не влияет на сетку)
     randMax: 800,
     pairGap: 1000
   },
 
-  // Маппинг 0..9 в частоты
+  // Маппинг 0..9 → частоты
   FREQ_MIN: 130.813,
   FREQ_MAX: 523.251,
   PITCH_MODE: 'geometric',
 
-  // Firebase RTDB
+  // Ветка RTDB
   DB_PATH: 'dates',
+
+  // Firebase Console Config (замени на свой)
   firebaseConfig: {
     apiKey: "ВАШ_API_KEY",
     authDomain: "ВАШ_PROJECT_ID.firebaseapp.com",
