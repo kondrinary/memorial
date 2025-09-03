@@ -1,9 +1,10 @@
-// data.js — Firebase RTDB + единые «серверные» часы + окна активации (1 сек)
+// data.js — Firebase RTDB + «серверные» часы + окна активации (1с) + журнал смен TL
 (function(){
   const Data = {};
   let ready = false;
   let db = null;
   let datesRef = null;
+  let changesRef = null;
 
   // ===== ИНИЦ =====
   Data.init = function(){
@@ -21,7 +22,8 @@
       db = firebase.database();
 
       const path = (window.AppConfig && AppConfig.DB_PATH) ? AppConfig.DB_PATH : 'dates';
-      datesRef = db.ref(path);
+      datesRef   = db.ref(path);
+      changesRef = db.ref('control/changes'); // журнал смен TL по окнам
 
       ready = true;
       return true;
@@ -31,7 +33,7 @@
     }
   };
 
-  // ===== ДОБАВЛЕНИЕ ДАТЫ (с серверным таймстампом!) =====
+  // ===== ДОБАВЛЕНИЕ ДАТЫ (с серверным таймстампом) =====
   Data.pushDate = async function(bDigits, dDigits){
     if (!ready && !Data.init()) return false;
     try {
@@ -49,16 +51,14 @@
     }
   };
 
-  // ===== ПОДПИСКА С ОКНОМ АКТИВАЦИИ (частота 1 сек) =====
+  // ===== ПОДПИСКА НА ДАННЫЕ С ОКНОМ АКТИВАЦИИ (1 секунда) =====
   let _rawList = [];
   let _lastEmitIds = '';
   let _lastWindowId = null;
 
-  // Храним последнюю «активную» выдачу (нужна для детерминированного стартового offset)
+  // последняя «активная» выдача (для Player.start)
   let _lastFilteredList = [];
-  Data.getActiveList = function(){
-    return _lastFilteredList.slice();
-  };
+  Data.getActiveList = function(){ return _lastFilteredList.slice(); };
 
   Data.subscribe = function(handler, onError){
     if (!ready && !Data.init()) return;
@@ -94,21 +94,16 @@
     const windowStart = SYNC_EPOCH_MS + k * WIN_MS;
     return { k, windowStart, WIN_MS };
   }
-
-  // Доступно снаружи — для Player
-  Data.currentWindowInfo = function(){
-    return _windowInfo(Data.serverNow());
-  };
+  Data.currentWindowInfo = function(){ return _windowInfo(Data.serverNow()); };
 
   function _filteredByWindow(raw){
-    const now = Data.serverNow();
-    const { windowStart } = _windowInfo(now);
+    const { windowStart } = _windowInfo(Data.serverNow());
     return raw.filter(x => (x.ts || 0) <= windowStart);
   }
 
   function _emitIfChanged(handler){
     const list = _filteredByWindow(_rawList);
-    _lastFilteredList = list; // <— сохраняем «активную» копию для Player.start()
+    _lastFilteredList = list; // сохраняем активную копию
 
     const ids = list.map(x=>x.id).join(',');
     if (ids !== _lastEmitIds){
@@ -127,14 +122,42 @@
       if (_lastWindowId === null) _lastWindowId = k;
       if (k !== _lastWindowId){
         _lastWindowId = k;
-        _emitIfChanged(handler); // новая секунда → включить свежие записи синхронно
+        _emitIfChanged(handler); // новая секунда → синхронно включаем свежие записи
       }
       setTimeout(tick, Math.max(100, Math.min(300, WIN_MS/5)));
     };
     tick();
   }
 
-  // ===== СТАБИЛЬНЫЕ «СЕРВЕРНЫЕ» ЧАСЫ (исправленный «якорь») =====
+  // ===== ЖУРНАЛ СМЕН TL (control/changes) =====
+  // Записать смену (идемпотентно): ключ — номер окна k. Кто успел первым, тот и записал.
+  Data.announceChange = async function(k, beat, n){
+    if (!ready && !Data.init()) return;
+    try {
+      const ref = changesRef.child(String(k));
+      await ref.transaction(cur => cur || {
+        k, beat, n,
+        ts: firebase.database.ServerValue.TIMESTAMP
+      });
+    } catch(e){
+      // тихо игнорируем (возможно, уже записано другим клиентом)
+    }
+  };
+
+  // Однократное чтение журнала (отдаёт отсортированный массив)
+  Data.getChangeLogOnce = async function(){
+    if (!ready && !Data.init()) return [];
+    try{
+      const snap = await changesRef.once('value');
+      const val = snap.val() || {};
+      return Object.values(val).sort((a,b)=> (a.k - b.k));
+    }catch(e){
+      console.warn('[Data.getChangeLogOnce]', e);
+      return [];
+    }
+  };
+
+  // ===== «Серверные» часы (исправленный «якорь») =====
   let offsetRef = null;
 
   let _anchorServerNow = 0;
@@ -230,7 +253,7 @@
             if (t >= 1){ _stableOffsetMs = targetVal; return; }
             const k = 1 - Math.pow(1 - t, 3);
             _stableOffsetMs = startVal + (targetVal - startVal) * k;
-          requestAnimationFrame(_slew);
+            requestAnimationFrame(_slew);
           }
           _slew();
         }
