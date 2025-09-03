@@ -1,4 +1,4 @@
-// player.js — ровная сетка + anti-miss + непрерывность при append (index rotation)
+// player.js — ровная сетка + anti-miss + непрерывность при append (deterministic boot offset)
 (function(){
   const { SYNC_EPOCH_MS, SPEED, DUR } = window.AppConfig;
   const GRID_MS = (window.AppConfig?.SYNC?.GRID_MS) || 700;
@@ -15,7 +15,7 @@
   let N_pending  = 0;
   let switchAtMs = null;
 
-  // Индексный поворот (rotation), чтобы при append не было «отката»
+  // Индексный поворот (rotation)
   let idxOffset         = 0; // применяется к TL_active
   let pendingIdxOffset  = 0; // будет применён к TL_pending при переключении
 
@@ -26,10 +26,9 @@
   // Планировщик
   const LOOKAHEAD_MS      = Math.min(900, Math.floor(GRID_MS * 0.85));
   const SCHED_TICK_MS     = 30;
-  const MISS_TOL_MS       = 150;             // catch-up, если границу чуть проспали
-  let   lastScheduledBeat = null;            // защита от двойной постановки одного и того же beat
+  const MISS_TOL_MS       = 150;
+  let   lastScheduledBeat = null;
 
-  // ---------- helpers ----------
   const mod = (a,n)=> ((a % n) + n) % n;
 
   function highlight(span){
@@ -38,29 +37,81 @@
     lastSpan = span;
   }
 
-  // Проверка, что TL_new — это append к TL_active (префикс совпадает)
-  function isAppendOfActive(TL_new){
-    if (!TL_active || !TL_active.length) return true; // если пусто — считаем append
-    if (!TL_new || TL_new.length < TL_active.length) return false;
-    for (let i=0;i<TL_active.length;i++){
-      if (!TL_new[i] || TL_new[i].digit !== TL_active[i].digit) return false;
+  // ---------- детерминированный пересчёт offset при старте ----------
+  function ceilDiv(a,b){ return Math.floor((a + b - 1)/b); }
+
+  // «Первый beat строго ПОСЛЕ» момента t
+  function firstBeatAfter(t){
+    return Math.floor((t - SYNC_EPOCH_MS) / GRID_MS) + 1;
+  }
+
+  // Сколько цифр добавляет запись
+  function digitsCount(item){
+    if (Array.isArray(item.digits)) return item.digits.length;
+    const s = (item.birth||'') + (item.death||'');
+    return s.replace(/\D/g,'').length;
+  }
+
+  // На каком окне (k) активируется запись по её ts
+  function activationWindowK(ts, WIN_MS){
+    // k такое, что ts ∈ (windowStart(k-1), windowStart(k)]  => k = ceil((ts - epoch)/WIN_MS)
+    return ceilDiv(ts - SYNC_EPOCH_MS, WIN_MS);
+  }
+
+  // Пересчёт idxOffset из истории (списка активных записей) — детерминированно
+  function computeBootOffsetFromHistory(activeList){
+    const { MS: WIN_MS } = (window.AppConfig?.WINDOW) || { MS: 1000 };
+
+    // Группируем «сколько цифр добавилось» по каждому окну k
+    const addByK = new Map();
+    for (const it of activeList){
+      const ts = +it.ts || 0;
+      if (ts <= 0) continue;
+      const k = activationWindowK(ts, WIN_MS);
+      addByK.set(k, (addByK.get(k)||0) + digitsCount(it));
     }
-    return true;
+
+    // Идём по окнам по возрастанию, эмулируя наши правила «switch на первом грид-пороге после окна»
+    let N = 0;
+    let off = 0;
+    const ks = Array.from(addByK.keys()).sort((a,b)=>a-b);
+    for (const k of ks){
+      const add = addByK.get(k) || 0;
+      if (add <= 0) continue;
+
+      const windowStart = SYNC_EPOCH_MS + k * WIN_MS; // начало окна
+      const targetBeat  = firstBeatAfter(windowStart); // наш детерминированный switch beat
+
+      if (N === 0){
+        // первая партия — просто появляется; offset остаётся 0
+        N = add;
+        off = 0;
+        continue;
+      }
+
+      const N_new = N + add;
+
+      // Формула ротации для непрерывности:
+      // (targetBeat + off) mod N  ==  (targetBeat + off_new) mod N_new
+      // => off_new = ( (targetBeat + off) mod N - (targetBeat mod N_new) ) mod N_new
+      const nextIdxOld = mod(targetBeat + off, N);
+      const off_new    = mod(nextIdxOld - mod(targetBeat, N_new), N_new);
+
+      N = N_new;
+      off = off_new;
+    }
+
+    return { off, Nfinal: N };
   }
 
-  // Вычисляем rotation для pending так, чтобы на целевом beat
-  // следующий индекс в новом TL совпал с тем, что играл бы на старом TL.
+  // ---------- rotation при аппенде в рантайме ----------
   function computePendingRotationForContinuity(targetBeat){
-    // Какой индекс заиграл бы «сейчас» на старом TL?
     const nextIdxOld = mod(targetBeat + idxOffset, N_active);
-    // На новом TL хотим попасть в ТОТ ЖЕ индекс префикса.
-    // Решаем: (targetBeat + pendingIdxOffset) mod N_pending = nextIdxOld
-    const base = mod(targetBeat, N_pending);
-    const rot  = mod(nextIdxOld - base, N_pending);
-    return rot;
+    const base       = mod(targetBeat, N_pending);
+    return mod(nextIdxOld - base, N_pending);
   }
 
-  // Планирование ноты для целевого beat (универсально: и для active, и для pending)
+  // ---------- планирование ноты ----------
   function scheduleForBeat(targetBeat, boundaryMs, usePendingTL, isCatchUp=false){
     lastScheduledBeat = targetBeat;
 
@@ -96,11 +147,20 @@
     TL_active = TL0;
     N_active  = TL_active.length | 0;
 
+    // ДЕТЕРМИНИРОВАННО восстановим idxOffset из истории активного списка
+    idxOffset = 0;
+    try{
+      if (Data && typeof Data.getActiveList === 'function'){
+        const list = Data.getActiveList(); // уже отфильтровано по текущему окну
+        const { off } = computeBootOffsetFromHistory(list);
+        if (Number.isFinite(off)) idxOffset = off;
+      }
+    } catch(e){ /* noop */ }
+
     TL_pending = null;
     N_pending  = 0;
     switchAtMs = null;
 
-    idxOffset        = 0;
     pendingIdxOffset = 0;
 
     lastIdx = -1;
@@ -120,7 +180,7 @@
     lastIdx = -1;
   };
 
-  // Любые изменения TL — применяем на ближайшей общей границе сетки
+  // Любые изменения TL — применяем на границе, привязанной к ОКНУ (детерминированно)
   Player.onTimelineChanged = function(){
     const TL_new = (window.Visual?.getTimelineSnapshot)
       ? Visual.getTimelineSnapshot()
@@ -129,11 +189,19 @@
     if (!running){
       TL_active = TL_new;
       N_active  = TL_active.length | 0;
+
+      // При «тихом» старте пересчитаем offset заново из истории
+      idxOffset = 0;
+      try{
+        if (Data?.getActiveList){
+          const { off } = computeBootOffsetFromHistory(Data.getActiveList());
+          if (Number.isFinite(off)) idxOffset = off;
+        }
+      } catch(_){}
+
       TL_pending = null;
       N_pending  = 0;
       switchAtMs = null;
-
-      idxOffset        = 0;
       pendingIdxOffset = 0;
 
       lastIdx = -1;
@@ -145,21 +213,26 @@
     TL_pending = TL_new;
     N_pending  = TL_pending.length | 0;
 
-    const nowSrv   = Data.serverNow();
-    const curBeat  = Math.floor((nowSrv - SYNC_EPOCH_MS) / GRID_MS);
-    const nextBeat = curBeat + 1;
-    switchAtMs     = SYNC_EPOCH_MS + nextBeat * GRID_MS;
+    // Берём границу для переключения из окна (у всех одинакова)
+    let targetBeat;
+    try{
+      const { windowStart } = Data.currentWindowInfo();
+      targetBeat = firstBeatAfter(windowStart);
+    } catch(_){
+      // фолбэк: как раньше (следующая грид-граница от текущего времени)
+      const nowSrv = Data.serverNow();
+      targetBeat = Math.floor((nowSrv - SYNC_EPOCH_MS) / GRID_MS) + 1;
+    }
+    switchAtMs = SYNC_EPOCH_MS + targetBeat * GRID_MS;
 
-    // rotation для pending:
-    if (N_active > 0 && N_pending > 0 && isAppendOfActive(TL_pending)){
-      pendingIdxOffset = computePendingRotationForContinuity(nextBeat);
+    // Ротация для непрерывности (тоже из targetBeat)
+    if (N_active > 0 && N_pending > 0){
+      pendingIdxOffset = computePendingRotationForContinuity(targetBeat);
     } else {
-      // если это не append (например, полный пересбор) — начинаем «с нуля»
       pendingIdxOffset = 0;
     }
 
-    // чтобы не осталась старая постановка на эту же границу
-    lastScheduledBeat = null;
+    lastScheduledBeat = null; // на всякий
   };
 
   Player.rebuildAndResync = Player.onTimelineChanged;
@@ -171,7 +244,7 @@
     const nowSrv  = Data.serverNow();
     const curBeat = Math.floor((nowSrv - SYNC_EPOCH_MS) / GRID_MS);
 
-    // Переключение TL строго на общей границе сетки
+    // Переключение TL строго на нашей заранее посчитанной границе
     if (switchAtMs && nowSrv >= switchAtMs && TL_pending){
       TL_active  = TL_pending;
       N_active   = N_pending;
@@ -179,11 +252,10 @@
       N_pending  = 0;
       switchAtMs = null;
 
-      // применяем новый rotation, чтобы не было «отката»
+      // применяем rotation, чтобы не было «отката»
       idxOffset = pendingIdxOffset;
 
       lastIdx = -1;
-      // lastScheduledBeat НЕ сбрасываем — планирование идёт по targetBeat
     }
 
     if (!N_active){
@@ -194,21 +266,18 @@
     // Индекс по сетке с учётом rotation (для подсветки)
     const idxNow = mod(curBeat + idxOffset, N_active);
 
-    // === Планирование звука на СЛЕДУЮЩИЙ beat (или catch-up, если промахнулись) ===
+    // Планирование звука на следующий beat (или catch-up, если слегка проспали)
     const nextBeat    = curBeat + 1;
     const boundaryAbs = SYNC_EPOCH_MS + nextBeat * GRID_MS;
     const dtMs        = boundaryAbs - nowSrv;
 
-    // 1) обычный план — если граница впереди и этот beat ещё не ставили
-    if (dtMs > 0 && dtMs <= LOOKAHEAD_MS && lastScheduledBeat !== nextBeat){
-      const usePending = !!(switchAtMs && Math.abs(boundaryAbs - switchAtMs) <= 8 && TL_pending);
-      scheduleForBeat(nextBeat, boundaryAbs, usePending, /*isCatchUp=*/false);
-    }
+    const switchIsNow = !!(switchAtMs && Math.abs(boundaryAbs - switchAtMs) <= 8 && TL_pending);
 
-    // 2) catch-up — если только что проскочили границу, и beat не поставлен
+    if (dtMs > 0 && dtMs <= LOOKAHEAD_MS && lastScheduledBeat !== nextBeat){
+      scheduleForBeat(nextBeat, boundaryAbs, switchIsNow, /*catch-up*/false);
+    }
     if (dtMs <= 0 && -dtMs <= MISS_TOL_MS && lastScheduledBeat !== nextBeat){
-      const usePending = !!(switchAtMs && Math.abs(boundaryAbs - switchAtMs) <= 8 && TL_pending);
-      scheduleForBeat(nextBeat, nowSrv + 10, usePending, /*isCatchUp=*/true);
+      scheduleForBeat(nextBeat, nowSrv + 10, switchIsNow, /*catch-up*/true);
     }
 
     // Подсветка текущего индекса
