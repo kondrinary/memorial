@@ -27,19 +27,23 @@
 
   Data.subscribe = function(handler, onError){
   if (!ready && !Data.init()) return;
+
   ref.on('value', (snap)=>{
-    const list = [];
-    snap.forEach(child=>{
-      const val = child.val();
-      // включаем уникальный ключ Firebase в элемент списка
-      list.push({ id: child.key, ...val });
-    });
+    const val = snap.val();
+    if (!val) { handler([]); return; }
+
+    // СТРОГО: по возрастанию ключа (старые → новые) — как в TD
+    const list = Object.entries(val)
+      .sort(([ka],[kb]) => ka.localeCompare(kb))
+      .map(([key, obj]) => ({ id: key, ...obj }));
+
     handler(list);
   }, (err)=>{
     console.error(err);
     if (onError) onError(err);
   });
 };
+
 
 
   // Возвращает Promise<boolean>

@@ -90,7 +90,7 @@
       console.error('[RTDB on(value) error]', err);
       debugInfo.textContent = `Ошибка чтения из базы: ${err?.code || err?.name || 'unknown'} — ${err?.message || ''}`;
     });
-  }); // ←←← ВОТ ЭТОГО ЗАКРЫВАЮЩЕГО "});" НЕ ХВАТАЛО
+  }); 
 
   // ====== КНОПКА «Добавить» (всегда активна) ======
   addBtn.addEventListener('click', ()=>{
@@ -121,26 +121,35 @@
     birthInput.value=''; deathInput.value='';
   });
 
-  // ====== КНОПКА «Тестовая запись» (всегда активна) ======
-  seedBtn.addEventListener('click', async ()=>{
-    if (debugInfo) debugInfo.textContent = 'Пробую добавить тестовую запись…';
+  // ====== КНОПКА «Тестовая запись»  ======
+const SEED_PRESETS = [
+  { b:'01011990', d:'02022000' },
+  { b:'15071985', d:'22092010' },
+  { b:'31121970', d:'01012000' },
+  { b:'03031999', d:'04042004' }
+];
+let seedIndex = 0;
 
-    // Инициализируем Firebase, даже если "Старт" ещё не был нажат
-    const okInit = Data.init();
-    if (!okInit) {
-      if (debugInfo) debugInfo.textContent = 'Firebase не инициализируется. Проверь config.js → firebaseConfig/databaseURL.';
-      return;
-    }
+seedBtn.addEventListener('click', async ()=>{
+  if (debugInfo) debugInfo.textContent = 'Пробую добавить тестовую запись…';
 
-    const birth = '01011990';
-    const death = '02022000';
+  const okInit = Data.init();
+  if (!okInit) {
+    if (debugInfo) debugInfo.textContent = 'Firebase не инициализируется. Проверь config.js → firebaseConfig/databaseURL.';
+    return;
+  }
 
-    const okPush = await Data.pushDate(birth, death);
-    if (okPush) {
-      if (debugInfo) debugInfo.textContent = 'Тестовая запись добавлена в /' + (window.AppConfig?.DB_PATH || 'dates');
-    } else {
-      if (debugInfo) debugInfo.textContent = 'Ошибка записи (проверьте Rules и ветку DB_PATH).';
-    }
-  });
+  const preset = SEED_PRESETS[seedIndex % SEED_PRESETS.length];
+  seedIndex++;
+
+  const okPush = await Data.pushDate(preset.b, preset.d);
+  if (okPush) {
+    if (debugInfo) debugInfo.textContent = 'Тестовая запись добавлена в /' + (window.AppConfig?.DB_PATH || 'dates') +
+      ` (${preset.b}–${preset.d})`;
+  } else {
+    if (debugInfo) debugInfo.textContent = 'Ошибка записи (проверьте Rules и ветку DB_PATH).';
+  }
+});
+
 
 })();

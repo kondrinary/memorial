@@ -39,43 +39,42 @@
 
   // Полная отстройка (первый снимок базы)
   Visual.build = function(list){
-    if (!stream) stream = document.getElementById('stream');
-    if (!stream) return;
+  if (!stream) stream = document.getElementById('stream');
+  if (!stream) return;
 
-    stream.innerHTML = '';
-    Visual.timeline = [];
-    Visual.knownIds.clear();
+  stream.innerHTML = '';
+  Visual.timeline = [];
+  Visual.knownIds.clear();
 
-    // Оставляем текущий порядок как в пришедшем списке (старые → новые)
-    list.forEach(item=>{
-      Visual.knownIds.add(item.id);
+  // БЕЗ reverse — прямой порядок: старые → новые
+  list.forEach(item=>{
+    Visual.knownIds.add(item.id);
 
-      const { frag, spans, text, digitsOnly } = renderPairToFragment(item);
-      stream.appendChild(frag); // добавляем в КОНЕЦ потока
+    const { frag, spans, text, digitsOnly } = renderPairToFragment(item);
+    stream.appendChild(frag); // визуально тоже добавляем в КОНЕЦ
 
-      // наполняем таймлайн только цифрами (точки пропускаем)
-      let di = 0;
-      for (let i=0;i<text.length;i++){
-        const ch = text[i];
-        if (/\d/.test(ch)){
-          const d = digitsOnly[di];
-          const isLast = (di === digitsOnly.length - 1);
-          Visual.timeline.push({
-            digit: d,
-            freq: digitToFreq(d),
-            span: spans[i],        // span соответствующей цифры
-            pairEnd: isLast
-          });
-          di++;
-        }
+    // наполняем таймлайн только цифрами в ТОМ ЖЕ порядке
+    let di = 0;
+    for (let i=0;i<text.length;i++){
+      const ch = text[i];
+      if (/\d/.test(ch)){
+        const d = digitsOnly[di];
+        const isLast = (di === digitsOnly.length - 1); // конец пары (16-я цифра)
+        Visual.timeline.push({
+          digit: d,
+          freq: digitToFreq(d),
+          span: spans[i],
+          pairEnd: isLast
+        });
+        di++;
       }
-    });
-
-    // СООБЩАЕМ плееру, что структура/длины изменились — он ресинхронизируется
-    if (window.Player && typeof Player.onTimelineChanged === 'function') {
-      Player.onTimelineChanged();
     }
-  };
+  });
+
+  if (window.Player && typeof Player.onTimelineChanged === 'function') {
+    Player.onTimelineChanged();
+  }
+};
 
   // Дозагрузка новых записей (последующие снапшоты)
   Visual.append = function(list){
@@ -116,5 +115,29 @@
     }
   };
 
+
+let _lastActiveIndex = -1;
+  Visual.setActiveIndex = function(idx){
+    if (!Visual.timeline || !Visual.timeline.length) return;
+    if (_lastActiveIndex === idx) return;
+
+    if (_lastActiveIndex >= 0){
+      const prev = Visual.timeline[_lastActiveIndex];
+      if (prev && prev.span) prev.span.classList.remove('active');
+    }
+    const cur = Visual.timeline[idx];
+    if (cur && cur.span) cur.span.classList.add('active');
+
+    _lastActiveIndex = idx;
+  };
+
+
   window.Visual = Visual;
+// Вернёт "снимок" текущего таймлайна (чтобы Player мог держать активную копию)
+Visual.getTimelineSnapshot = function(){
+  const tl = Visual.timeline || [];
+  return tl.map(x => ({ digit:x.digit, freq:x.freq, span:x.span, pairEnd:x.pairEnd }));
+};
+
+
 })();
