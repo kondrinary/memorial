@@ -1,7 +1,4 @@
-// synth.js — максимально мягкий синт без семплов (анти-щёлчки).
-// Один «корпусной» слой + (опционально) очень тихий FM-слой атаки, сведённые в BUS.
-// BUS → HPF 80Гц → Comp → LPF → Delay (сухо) → Reverb (сухо) → Out.
-
+// synth.js — мягкий синт без семплов (анти-щёлчки)
 (function () {
   const Synth = {};
   let ready = false;
@@ -11,64 +8,30 @@
   let bodyGain, attackGain, busGain;
   let dcCut, comp, lowpass, ping, reverb, master;
 
-  // ================== ПАРАМЕТРЫ (крутить здесь) ==================
+  // ================== ПАРАМЕТРЫ ==================
   const FX = {
-    // Баланс слоёв
-    bodyLevel:   0.50,   // основной слой
-    attackLevel: 0.00,   // FM-атака ВЫКЛ по умолчанию (0.00). Если щелчков нет — пробуй 0.06–0.10.
+    bodyLevel:   0.50,
+    attackLevel: 0.00,   // атака выключена по умолчанию
 
-    // Корпус (Tone.Synth)
-    bodyOsc: "sine",     // "sine" | "triangle"
+    bodyOsc: "sine",
     bodyEnv: {
-      attack: 0.060,     // длиннее атака = меньше щелчков
-      decay:  0.30,
-      sustain:0.20,
-      release:2.0,       // умеренный хвост, чтобы не наслаивалось
-      attackCurve:  "sine",
-      releaseCurve: "sine"
+      attack: 0.060, decay: 0.30, sustain: 0.20, release: 2.0,
+      attackCurve: "sine", releaseCurve: "sine"
     },
 
-    // Атака (Tone.FMSynth) — отключена уровнем, но настроена мягко
-    fmHarmonicity:  1.7,
-    fmModIndex:     4.0,
-    fmEnv: {
-      attack: 0.015,
-      decay:  0.10,
-      sustain: 0.05,
-      release: 0.12,
-      attackCurve:  "sine",
-      releaseCurve: "sine"
-    },
-    fmModEnv: {
-      attack: 0.015,
-      decay:  0.10,
-      sustain: 0.05,
-      release: 0.12,
-      attackCurve:  "sine",
-      releaseCurve: "sine"
-    },
+    fmHarmonicity: 1.7, fmModIndex: 4.0,
+    fmEnv:   { attack:0.015, decay:0.10, sustain:0.05, release:0.12, attackCurve:"sine", releaseCurve:"sine" },
+    fmModEnv:{ attack:0.015, decay:0.10, sustain:0.05, release:0.12, attackCurve:"sine", releaseCurve:"sine" },
 
-    // Общий BUS
     busLevel: 0.55,
+    lowpassFreq: 3300,
 
-    // Тон/мягкость
-    lowpassFreq: 3300,   // 3000–5200 Гц: ниже = мягче
+    delayTime: "4n", feedback: 0.18, delayWet: 0.08,
+    reverbRoom: 0.78, reverbDamp: 1900, reverbWet: 0.18,
 
-    // Эффекты — СУХО (минимум артефактов)
-    delayTime: "4n",
-    feedback:  0.18,
-    delayWet:  0.08,     // «мокрота» эха
-    reverbRoom: 0.78,
-    reverbDamp: 1900,
-    reverbWet:  0.18,    // «мокрота» реверба
-
-    // Мягкая компрессия на BUS (сглаживает пики)
-    compThresh:  -30,
-    compRatio:   2.0,
-    compAttack:  0.03,
-    compRelease: 0.25
+    compThresh: -30, compRatio: 2.0, compAttack: 0.03, compRelease: 0.25
   };
-  // ================================================================
+  // =================================================
 
   Synth.init = async function () {
     if (typeof Tone === 'undefined') throw new Error('Tone.js не загрузился');
@@ -77,9 +40,9 @@
     try {
       const ctx = Tone.getContext();
       ctx.latencyHint   = 'playback';
-      ctx.lookAhead     = 0.20;     // ↑ запас на планирование
+      ctx.lookAhead     = 0.20;
       ctx.updateInterval= 0.03;
-      Tone.Destination.volume.value = -4; // тише мастер
+      Tone.Destination.volume.value = -4;
     } catch (_) {}
 
     // PolySynth (корпус)
@@ -87,7 +50,7 @@
       oscillator: { type: FX.bodyOsc },
       envelope:   { ...FX.bodyEnv }
     });
-    bodyPoly.maxPolyphony = 16; // достаточно, но без лишних голосов
+    bodyPoly.maxPolyphony = 16;
 
     // PolySynth (FM-атака)
     attackPoly = new Tone.PolySynth(Tone.FMSynth, {
@@ -102,11 +65,11 @@
 
     // Гейны слоёв + BUS
     bodyGain   = new Tone.Gain(FX.bodyLevel);
-    attackGain = new Tone.Gain(FX.attackLevel); // 0.00 по умолчанию
+    attackGain = new Tone.Gain(FX.attackLevel);
     busGain    = new Tone.Gain(FX.busLevel);
 
     // FX на BUS
-    dcCut  = new Tone.Filter(80, "highpass"); // подняли до 80 Гц — меньше «низового» треска
+    dcCut  = new Tone.Filter(80, "highpass");
     comp   = new Tone.Compressor({
       threshold: FX.compThresh, ratio: FX.compRatio,
       attack: FX.compAttack, release: FX.compRelease
@@ -129,15 +92,15 @@
     Synth.fx = { ...FX };
   };
 
-  // Воспроизведение ноты
-  Synth.trigger = function (freq, lenSec, vel = 0.65) {
+  // Воспроизведение ноты (поддержка whenAbs)
+  // Synth.trigger(freq, lenSec, vel=0.65, whenAbs=null)
+  Synth.trigger = function (freq, lenSec, vel = 0.65, whenAbs = null) {
     if (!ready) return;
-    const when = Tone.now() + 0.015; // чуть больше оффсет = стабильнее старт
+    const nowTone = Tone.now();
+    const when = (whenAbs != null) ? whenAbs : (nowTone + 0.015);
 
-    // Корпус
     bodyPoly.triggerAttackRelease(freq, lenSec, when, vel);
 
-    // FM-атака (если включишь уровнем)
     if (Synth.fx.attackLevel > 0.001) {
       const atkLen = Math.min(lenSec, 0.10);
       const atkVel = Math.min(1, vel * 0.6);

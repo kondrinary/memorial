@@ -6,7 +6,7 @@
 
   let stream = null; // контейнер для текста справа (#stream)
 
-  // === перевод цифры 0..9 -> частота (геометрическое / линейное деление) ===
+  // === перевод цифры 0..9 -> частота ===
   function digitToFreq(d){
     const { FREQ_MIN, FREQ_MAX, PITCH_MODE } = AppConfig;
     if (PITCH_MODE === 'geometric') {
@@ -19,7 +19,6 @@
 
   // один элемент (пара дат) -> фрагмент и массив цифр
   function renderPairToFragment(item){
-    // форматируем для потока: ДД.ММ.ГГГГ.ДД.ММ.ГГГГ.
     const bStr = item.birth.slice(0,2)+'.'+item.birth.slice(2,4)+'.'+item.birth.slice(4);
     const dStr = item.death.slice(0,2)+'.'+item.death.slice(2,4)+'.'+item.death.slice(4);
     const text = `${bStr}.${dStr}.`;
@@ -29,7 +28,7 @@
     for (const ch of text){
       const s = document.createElement('span');
       s.textContent = ch;
-      if (/\d/.test(ch)) s.classList.add('digit'); // подсвечиваем только цифры
+      if (/\d/.test(ch)) s.classList.add('digit');
       frag.appendChild(s);
       spans.push(s);
     }
@@ -39,42 +38,42 @@
 
   // Полная отстройка (первый снимок базы)
   Visual.build = function(list){
-  if (!stream) stream = document.getElementById('stream');
-  if (!stream) return;
+    if (!stream) stream = document.getElementById('stream');
+    if (!stream) return;
 
-  stream.innerHTML = '';
-  Visual.timeline = [];
-  Visual.knownIds.clear();
+    stream.innerHTML = '';
+    Visual.timeline = [];
+    Visual.knownIds.clear();
 
-  // БЕЗ reverse — прямой порядок: старые → новые
-  list.forEach(item=>{
-    Visual.knownIds.add(item.id);
+    // прямой порядок: старые → новые
+    list.forEach(item=>{
+      Visual.knownIds.add(item.id);
 
-    const { frag, spans, text, digitsOnly } = renderPairToFragment(item);
-    stream.appendChild(frag); // визуально тоже добавляем в КОНЕЦ
+      const { frag, spans, text, digitsOnly } = renderPairToFragment(item);
+      stream.appendChild(frag); // визуально — в конец
 
-    // наполняем таймлайн только цифрами в ТОМ ЖЕ порядке
-    let di = 0;
-    for (let i=0;i<text.length;i++){
-      const ch = text[i];
-      if (/\d/.test(ch)){
-        const d = digitsOnly[di];
-        const isLast = (di === digitsOnly.length - 1); // конец пары (16-я цифра)
-        Visual.timeline.push({
-          digit: d,
-          freq: digitToFreq(d),
-          span: spans[i],
-          pairEnd: isLast
-        });
-        di++;
+      // в таймлайн — только цифры в том же порядке
+      let di = 0;
+      for (let i=0;i<text.length;i++){
+        const ch = text[i];
+        if (/\d/.test(ch)){
+          const d = digitsOnly[di];
+          const isLast = (di === digitsOnly.length - 1); // конец пары
+          Visual.timeline.push({
+            digit: d,
+            freq: digitToFreq(d),
+            span: spans[i],
+            pairEnd: isLast
+          });
+          di++;
+        }
       }
-    }
-  });
+    });
 
-  if (window.Player && typeof Player.onTimelineChanged === 'function') {
-    Player.onTimelineChanged();
-  }
-};
+    if (window.Player && typeof Player.onTimelineChanged === 'function') {
+      Player.onTimelineChanged();
+    }
+  };
 
   // Дозагрузка новых записей (последующие снапшоты)
   Visual.append = function(list){
@@ -84,15 +83,13 @@
     let changed = false;
 
     list.forEach(item=>{
-      if (Visual.knownIds.has(item.id)) return; // уже есть
+      if (Visual.knownIds.has(item.id)) return;
       Visual.knownIds.add(item.id);
       changed = true;
 
       const { frag, spans, text, digitsOnly } = renderPairToFragment(item);
-      // визуально — добавляем в КОНЕЦ (вниз)
       stream.appendChild(frag);
 
-      // в таймлайн — тоже в конец, чтобы проигрывание не сбрасывалось
       let di = 0;
       for (let i=0;i<text.length;i++){
         const ch = text[i];
@@ -115,8 +112,7 @@
     }
   };
 
-
-let _lastActiveIndex = -1;
+  let _lastActiveIndex = -1;
   Visual.setActiveIndex = function(idx){
     if (!Visual.timeline || !Visual.timeline.length) return;
     if (_lastActiveIndex === idx) return;
@@ -131,13 +127,11 @@ let _lastActiveIndex = -1;
     _lastActiveIndex = idx;
   };
 
+  // Вернёт «снимок» текущего таймлайна (чтобы Player держал активную копию)
+  Visual.getTimelineSnapshot = function(){
+    const tl = Visual.timeline || [];
+    return tl.map(x => ({ digit:x.digit, freq:x.freq, span:x.span, pairEnd:x.pairEnd }));
+  };
 
   window.Visual = Visual;
-// Вернёт "снимок" текущего таймлайна (чтобы Player мог держать активную копию)
-Visual.getTimelineSnapshot = function(){
-  const tl = Visual.timeline || [];
-  return tl.map(x => ({ digit:x.digit, freq:x.freq, span:x.span, pairEnd:x.pairEnd }));
-};
-
-
 })();

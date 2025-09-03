@@ -82,7 +82,7 @@ button{
   color:var(--btn-fg);
   padding:12px 18px;
   font-size:16px;
-  font-weight:400;         /* без жирного */
+  font-weight:400;
   letter-spacing:.01em;
   cursor:pointer;
   transition:background-color .15s ease, transform .02s ease;
