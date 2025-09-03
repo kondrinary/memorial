@@ -1,11 +1,14 @@
-
+// player.js — синхронное проигрывание от SYNC_EPOCH_MS.
+// • При ДОБАВЛЕНИИ дат (append) динамически наращиваем активный таймлайн
+//   и СХРАНЯЕМ текущую фазу (без скачка).
+// • При НЕ-append изменениях (удаление/перестановка) — переключаемся
+//   на границе цикла с якорем фазы.
 
 (function(){
   const { SYNC_EPOCH_MS, SPEED, DUR, RANDOM_MODE, SYNC_SEED } = window.AppConfig;
 
   let running = false;
   let rafId   = null;
-
 
   // ---- АКТИВНОЕ СОСТОЯНИЕ ----
   let TL_active    = [];   // [{digit,freq,span,pairEnd}, ...]
@@ -26,11 +29,6 @@
   // Подсветка
   let lastIdx  = -1;
   let lastSpan = null;
-
-    // Планировщик
-  const LOOKAHEAD_MS   = 200;   // заглядываем вперёд ~0.2с
-  const SCHED_TICK_MS  = 60;    // шаг планировщика
-  let lastPlannedBoundaryMs = -1;
 
   // ===== УТИЛИТЫ =====
   function mulberry32(a){ return function(i){
@@ -60,7 +58,7 @@
   // Текущая фаза с учётом якоря
   function phaseNow(total){
     if (!total) return 0;
-    let p = (Data.serverNow() - SYNC_EPOCH_MS - phaseBiasMs) % total;
+    let p = (Date.now() - SYNC_EPOCH_MS - phaseBiasMs) % total;
     return p < 0 ? p + total : p;
   }
 
@@ -74,7 +72,7 @@
   }
 
   function nextBoundaryTime(total){
-    const now = Data.serverNow();
+    const now = Date.now();
     if (!total) return now;
     const k   = Math.floor((now - SYNC_EPOCH_MS) / total);
     return SYNC_EPOCH_MS + (k+1)*total;
@@ -85,15 +83,6 @@
     if (span) span.classList.add('active');
     lastSpan = span;
   }
-
-
-// Сколько мс до конца текущего индекса (до границы)
-function msToIndexBoundary(p, cum) {
-  const idx = indexForPhase(cum, p);
-  const end = cum[idx];           // время конца текущего индекса (мс с начала цикла)
-  return Math.max(0, end - p);    // сколько осталось
-}
-
 
   // ===== ПУБЛИЧНОЕ API =====
   const Player = {};
@@ -193,7 +182,7 @@ function msToIndexBoundary(p, cum) {
       // 3) подстроим якорь так, чтобы фаза ПОСЛЕ удлинения осталась pOld
       //    pNew = (now - epoch - bias) % total_active == pOld
       // => bias = (now - epoch - pOld) % total_active
-      const now = Data.serverNow();
+      const now = Date.now();
       phaseBiasMs = (now - SYNC_EPOCH_MS - pOld) % (total_active || 1);
       if (phaseBiasMs < 0) phaseBiasMs += (total_active || 1);
 
@@ -212,78 +201,51 @@ function msToIndexBoundary(p, cum) {
   // совместимость
   Player.rebuildAndResync = Player.onTimelineChanged;
 
-function tick(){
-  if (!running){ return; }
+  function tick(){
+    if (!running){ return; }
 
-  // Переключение НЕ-append строго на границе цикла
-  if (switchAtMs && Data.serverNow() >= switchAtMs && TL_pending){
-    phaseBiasMs = (switchAtMs - SYNC_EPOCH_MS) % (total_pending || 1);
-    if (phaseBiasMs < 0) phaseBiasMs += (total_pending || 1);
+    // Переключение НЕ-append на границе
+    if (switchAtMs && Date.now() >= switchAtMs && TL_pending){
+      // Якорь: новый цикл начнётся строго с 0
+      phaseBiasMs = (switchAtMs - SYNC_EPOCH_MS) % (total_pending || 1);
+      if (phaseBiasMs < 0) phaseBiasMs += (total_pending || 1);
 
-    TL_active     = TL_pending;
-    dur_active    = dur_pending;
-    cum_active    = cum_pending;
-    total_active  = total_pending;
+      TL_active     = TL_pending;
+      dur_active    = dur_pending;
+      cum_active    = cum_pending;
+      total_active  = total_pending;
 
-    TL_pending    = null;
-    dur_pending   = null;
-    cum_pending   = null;
-    total_pending = 0;
-    switchAtMs    = null;
+      TL_pending    = null;
+      dur_pending   = null;
+      cum_pending   = null;
+      total_pending = 0;
+      switchAtMs    = null;
 
-    lastIdx = -1; // чтобы подсветка обновилась
-  }
-
-  const N = TL_active.length;
-  if (!N || !total_active){
-    rafId = requestAnimationFrame(tick);
-    return;
-  }
-
-  // Текущая фаза/индекс СЕЙЧАС
-  const pNow   = phaseNow(total_active);
-  const idxNow = indexForPhase(cum_active, pNow);
-
-  // === ПЛАНИРОВЩИК: ставим ноту на СЛЕДУЮЩУЮ границу индекса ===
-  const dtMs = msToIndexBoundary(pNow, cum_active);     // через сколько мс будет граница
-  const boundaryAbs = Data.serverNow() + dtMs;          // UTC-мс момента границы
-
-  if (dtMs <= LOOKAHEAD_MS && boundaryAbs !== lastPlannedBoundaryMs){
-    lastPlannedBoundaryMs = boundaryAbs;
-
-    // ВАЖНО: на границе начнётся СЛЕДУЮЩИЙ индекс
-    const nextIdx = (idxNow + 1) % N;
-    const node    = TL_active[nextIdx];
-    const lenSec  = (DUR.noteLen || 0.35) * (SPEED || 1);
-
-    const whenAbsTone = Tone.now() + Math.max(0, dtMs/1000);
-    if (window.Synth && typeof Synth.trigger === 'function'){
-      Synth.trigger(node.freq, lenSec, 0.8, whenAbsTone);
+      lastIdx = -1;
     }
+
+    const N = TL_active.length;
+    if (!N || !total_active){
+      rafId = requestAnimationFrame(tick);
+      return;
+    }
+
+    const p   = phaseNow(total_active);
+    const idx = indexForPhase(cum_active, p);
+    if (idx !== lastIdx){
+      const { digit, freq, span } = TL_active[idx];
+      const lenSec = (DUR.noteLen || 0.35) * (SPEED || 1);
+      if (window.Synth && typeof Synth.trigger === 'function'){
+        Synth.trigger(freq, lenSec, 0.8);
+      }
+      highlight(span);
+      const debug = document.getElementById('debugInfo');
+      if (debug) debug.textContent = `Играет: ${digit} → ${freq.toFixed(2)} Гц (idx ${idx})`;
+      lastIdx = idx;
+    }
+
+    rafId = requestAnimationFrame(tick);
   }
-
-  // Подсветка — «по факту» текущего индекса (может отставать ≤ 1 кадра — это норм)
-  if (idxNow !== lastIdx){
-    const { digit, freq, span } = TL_active[idxNow];
-    highlight(span);
-    const debug = document.getElementById('debugInfo');
-    if (debug) debug.textContent = `Играет: ${digit} → ${freq.toFixed(2)} Гц (idx ${idxNow})`;
-    lastIdx = idxNow;
-  }
-
-  // Мягкий цикл планировщика
-  setTimeout(()=>{ rafId = requestAnimationFrame(tick); }, SCHED_TICK_MS);
-}
-
-
-
-  // время до ближайшей границы ТЕКУЩЕГО индекса, мс
-  function msToIndexBoundary(p, cum){
-    const idx = indexForPhase(cum, p);
-    const end = cum[idx];
-    return Math.max(0, end - p);   // сколько осталось до границы
-  }
-
 
   window.Player = Player;
 })();
