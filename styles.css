@@ -1,0 +1,138 @@
+/* ===== ТЕМА ===== */
+:root{
+  --bg: #000;         /* фон */
+  --fg: #fff;         /* текст */
+  --muted:#9ca3af;    /* серый */
+  --line:#fff;        /* белые линии/обводки */
+  --btn-bg:#fff;      /* фон кнопки */
+  --btn-fg:#000;      /* текст на кнопке */
+  --btn-hover:#e6e6e6;
+  --btn-active:#cfcfcf;
+  --focus:#9ca3af;
+  --green:#00ff00;    /* подсветка цифры */
+}
+
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0;
+  background:var(--bg);
+  color:var(--fg);
+  font-family:"Inter",system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
+  display:flex;
+  height:100vh;            /* фиксируем высоту окна */
+  overflow:hidden;         /* чтобы скроллился только правый поток */
+}
+
+/* ===== ЛЕВАЯ/ПРАВАЯ КОЛОНКИ ===== */
+#left, #right{height:100vh}
+#left{
+  width:30%;               /* 30% слева */
+  min-width:280px;
+  padding:24px;
+  position:sticky;
+  top:0;
+  display:flex;
+  align-items:flex-start;  /* контент по левому краю */
+  justify-content:center;  /* центрируем по вертикали через .left-inner */
+  overflow:auto;           /* если текста много — свой скролл */
+  border-right:1px solid rgba(255,255,255,.08);
+}
+.left-inner{
+  width:100%;
+  max-width:420px;         /* аккуратная ширина колонки */
+  display:flex;
+  flex-direction:column;
+  gap:14px;
+}
+
+#right{
+  width:70%;               /* 70% справа */
+  padding:24px;
+  overflow:auto;           /* отдельный скролл потока */
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  font-size:18px;
+  line-height:1.5;
+}
+
+/* ===== КАРТОЧКА-ИНТРО (белая рамка) ===== */
+.card{
+  border:1.5px solid var(--line);
+  padding:16px;
+  border-radius:0;         /* прямоугольная */
+}
+.card .title{
+  margin:0 0 6px 0;
+  font-size:20px;
+  font-weight:600;
+}
+.card .desc{
+  margin:0;
+  color:#e5e7eb;
+  font-size:14px;
+  line-height:1.5;
+}
+
+/* ===== КНОПКИ ===== */
+button{
+  appearance:none;
+  border:none;
+  border-radius:0;
+  background:var(--btn-bg);
+  color:var(--btn-fg);
+  padding:12px 18px;
+  font-size:16px;
+  font-weight:400;         /* без жирного */
+  letter-spacing:.01em;
+  cursor:pointer;
+  transition:background-color .15s ease, transform .02s ease;
+}
+button:hover{ background:var(--btn-hover); }
+button:active{ background:var(--btn-active); transform:translateY(1px); }
+button:focus-visible{ outline:2px solid var(--focus); outline-offset:2px; }
+
+/* Кнопка тестовой записи — обычная, просто отступ */
+#seedBtn{ margin-top:2px; }
+
+/* ===== ФОРМА ===== */
+#formSection{
+  display:none;            /* показывается после старта */
+  width:100%;
+}
+input{
+  width:100%;
+  margin-bottom:12px;
+  padding:12px;
+  font-size:16px;
+  letter-spacing:.02em;
+  background:#000;         /* чёрная внутри */
+  color:#fff;
+  border:1.5px solid var(--line);  /* белая обводка */
+  border-radius:0;
+  outline:none;
+}
+input::placeholder{ color:var(--muted); }
+input:focus{ border-color:var(--fg); box-shadow:0 0 0 2px rgba(255,255,255,.12); }
+
+#status{ margin-top:2px; font-size:14px; color:#e5e7eb; }
+#debugInfo{ margin-top:8px; font-size:12px; color:#9ca3af; }
+
+/* ===== ПРАВЫЙ ПОТОК ДАТ ===== */
+#stream{
+  white-space:pre-wrap;    /* перенос по словам/точкам */
+  word-break:break-word;   /* переносим длинные куски */
+}
+#stream .digit{ color:#fff; transition:color .1s ease; }
+#stream .digit.active{ color:var(--green); font-weight:700; }
+
+/* ===== АДАПТИВ ===== */
+@media (max-width: 960px){
+  body{ flex-direction:column; height:100%; }
+  #left, #right{ width:100%; height:auto; }
+  #left{ position:relative; border-right:none; border-bottom:1px solid rgba(255,255,255,.08); }
+  #right{ height:55vh; }          /* поток занимает ~полэкрана */
+}
+@media (max-width: 420px){
+  .left-inner{ max-width:100%; }
+  #right{ padding:16px; }
+}

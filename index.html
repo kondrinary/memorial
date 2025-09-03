@@ -4,282 +4,59 @@
 <meta charset="UTF-8" />
 <title>Death Melody</title>
 
-<!-- Tone.js -->
+<!-- Внешние библиотеки -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.7.77/Tone.js"></script>
-
-<!-- Firebase compat -->
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 
-<style>
-  body{margin:0;font-family:sans-serif;display:flex;height:100vh;}
-  #left,#right{width:50%;box-sizing:border-box;padding:20px;}
-  #left{background:#fff;display:flex;flex-direction:column;align-items:center;}
-  #right{background:#000;color:#fff;font-family:monospace;font-size:18px;line-height:1.4;overflow-y:auto;white-space:pre-wrap;}
-  #formSection{display:none;width:100%;max-width:360px;}
-  input{width:100%;padding:8px;font-size:16px;margin-bottom:10px;}
-  button{padding:10px 18px;font-size:16px;cursor:pointer;}
-  .date-row{margin-bottom:12px;}
-  .digit{color:#fff;transition:color .1s;}
-  .digit.active{color:#00ff00;font-weight:bold;}
-  #status{margin-top:6px;font-size:14px;}
-  #debugInfo{margin-top:12px;font-size:13px;color:#444;}
-</style>
+<!-- Google Font -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&display=swap" rel="stylesheet">
+
+<link rel="stylesheet" href="styles.css" />
 </head>
 <body>
 
 <div id="left">
-  <button id="startBtn">▶️ Старт</button>
+  <div class="left-inner">
+    <!-- Белая рамка с названием и текстом — показывается до и после старта -->
+    <div id="introBox" class="card">
+      <h1 class="title">Название проекта</h1>
+      <p class="desc">
+        Короткое описание проекта в пару строк. Здесь можно объяснить идею и инструкцию.
+      </p>
+    </div>
 
-  <div id="formSection">
-    <input id="birthInput" placeholder="Дата рождения (ДД.ММ.ГГГГ)" maxlength="10">
-    <input id="deathInput" placeholder="Дата смерти (ДД.ММ.ГГГГ)" maxlength="10">
-    <button id="addBtn">Добавить</button>
-    <div id="status"></div>
-    <div id="debugInfo">Ожидание старта…</div>
+    <!-- КНОПКА ТЕСТОВОЙ ЗАПИСИ (видимость управляем из config.js → ENABLE_SEED) -->
+    <button id="seedBtn" type="button">Добавить тестовую запись</button>
+
+    <!-- Старт -->
+    <button id="startBtn" type="button">Старт</button>
+
+    <!-- Форма появляется после старта; интро-блок остаётся сверху -->
+    <div id="formSection">
+      <input id="birthInput" placeholder="Дата рождения (ДД.ММ.ГГГГ)" maxlength="10">
+      <input id="deathInput" placeholder="Дата смерти (ДД.ММ.ГГГГ)" maxlength="10">
+      <button id="addBtn" type="button">Добавить</button>
+      <div id="status"></div>
+      <div id="debugInfo">Ожидание старта…</div>
+    </div>
   </div>
 </div>
 
-<div id="right"></div>
+<!-- Правая панель: бесконечный поток дат (в одну ленту) -->
+<div id="right">
+  <div id="stream"></div>
+</div>
 
-<script>
-/* -------- Firebase -------- */
-const firebaseConfig = {
-  apiKey: "AIzaSyD7W5jmN8chjqWYrsfFsewNfrp7t0eb-Jk",
-  authDomain: "deathmelody.firebaseapp.com",
-  databaseURL: "https://deathmelody-default-rtdb.asia-southeast1.firebasedatabase.app",
-  projectId: "deathmelody",
-  storageBucket: "deathmelody.firebasestorage.app",
-  messagingSenderId: "1093758086114",
-  appId: "1:1093758086114:web:0b2a22646eac474469a7bb"
-};
-firebase.initializeApp(firebaseConfig);
-const db = firebase.database();
-const datesRef = db.ref('dates');
-
-/* -------- Микротональность 0–9 -------- */
-const FREQ_MIN = 32.703;
-const FREQ_MAX = 65.406;
-const freqMap = Array.from({length:10},(_,i)=>FREQ_MIN+i*(FREQ_MAX-FREQ_MIN)/9);
-const digitToFreq = d => freqMap[d];
-
-/* -------- DOM -------- */
-const startBtn   = document.getElementById('startBtn');
-const formSection= document.getElementById('formSection');
-const birthInput = document.getElementById('birthInput');
-const deathInput = document.getElementById('deathInput');
-const addBtn     = document.getElementById('addBtn');
-const statusEl   = document.getElementById('status');
-const debugInfo  = document.getElementById('debugInfo');
-const rightPane  = document.getElementById('right');
-
-/* -------- Формат ввода -------- */
-function formatDateInput(el){
-  let v = el.value.replace(/\D/g,'').slice(0,8);
-  let out='';
-  if(v.length>0) out+=v.slice(0,2);
-  if(v.length>=3) out+='.'+v.slice(2,4);
-  if(v.length>=5) out+='.'+v.slice(4,8);
-  el.value=out;
-}
-birthInput.addEventListener('input',()=>formatDateInput(birthInput));
-deathInput.addEventListener('input',()=>formatDateInput(deathInput));
-
-/* -------- Проверка дат -------- */
-function parseValidDate(str){
-  const m = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(str);
-  if(!m) return null;
-  const [_,dd,mm,yyyy]=m;
-  const d = new Date(+yyyy, +mm-1, +dd);
-  if(d.getFullYear()!=+yyyy || d.getMonth()!=+mm-1 || d.getDate()!=+dd) return null;
-  return d;
-}
-
-/* -------- Аудио -------- */
-let synth;
-let playingTimer=null;
-let timeline=[];
-let pointer=0;
-let isPlaying=false;
-
-function initSynth(){
-  // ===== ПАРАМЕТРЫ, КОТОРЫЕ МОЖНО КРУТИТЬ =====
-  const FX = {
-    delayTime   : "8n",   // "8n", "4n", 0.5 и т.п.
-    feedback    : 0.55,   // 0–0.9
-    delayWet    : 0.6,    // 0–1
-    reverbRoom  : 0.75,   // 0–1  (Freeverb)
-    reverbDamp  : 1800,   // Гц
-    reverbWet   : 0.45,   // 0–1
-    lowpassFreq : 1800,   // Гц
-    distAmount  : 0.0
-  };
-
-  const distortion = new Tone.Distortion(FX.distAmount);
-  const chorus     = new Tone.Chorus(4, 2.5, 0.2).start();
-  const delayFx    = new Tone.FeedbackDelay({delayTime:FX.delayTime, feedback:FX.feedback});
-  delayFx.wet.value = FX.delayWet;
-
-  const reverb     = new Tone.Freeverb({ roomSize: FX.reverbRoom, dampening: FX.reverbDamp });
-  reverb.wet.value = FX.reverbWet;
-
-  const lowpass    = new Tone.Filter(FX.lowpassFreq, "lowpass");
-
-  synth = new Tone.Synth({
-    oscillator:{ type:"triangle" }, // форма волны
-    envelope : { attack:0.15, decay:0.25, sustain:0.35, release:0.9 }
-  });
-  synth.portamento = 0.02;
-
-  synth.chain(lowpass, chorus, delayFx, reverb, distortion, Tone.Destination);
-}
-
-/* -------- Визуал + таймлайн -------- */
-function buildVisualAndTimeline(list){
-  rightPane.innerHTML='';
-  timeline=[]; pointer=0;
-
-  const showList = list.slice().reverse(); // новые сверху
-
-  showList.forEach(item=>{
-    const row = document.createElement('div');
-    row.className='date-row';
-
-    const bStr = item.birth.slice(0,2)+'.'+item.birth.slice(2,4)+'.'+item.birth.slice(4);
-    const dStr = item.death.slice(0,2)+'.'+item.death.slice(2,4)+'.'+item.death.slice(4);
-    const text = `${bStr} - ${dStr}`;
-
-    const spans=[];
-    for(const ch of text){
-      const span=document.createElement('span');
-      span.textContent=ch;
-      if(/\d/.test(ch)) span.classList.add('digit');
-      row.appendChild(span);
-      spans.push(span);
-    }
-    rightPane.appendChild(row);
-
-    let si=0;
-    const digits = (item.birth+item.death).split('').map(Number);
-    digits.forEach((d,i)=>{
-      let target=null;
-      while(si<spans.length){
-        if(spans[si].classList.contains('digit')){ target=spans[si]; si++; break; }
-        si++;
-      }
-      timeline.push({digit:d, freq:digitToFreq(d), span:target, pairEnd: i===digits.length-1});
-    });
-  });
-}
-
-/* -------- Управление скоростью -------- */
-// 1   = нормально; 2 = медленнее; 0.5 = быстрее
-let SPEED = 2;
-
-const DUR = {
-  noteLen : 0.4,  // сек — длина ноты (до масштаба)
-  randMin : 400,  // мс — мин. пауза между цифрами
-  randMax : 1000,  // мс — макс. пауза
-  pairGap : 1200   // мс — пауза между парами дат
-};
-
-function scaled(ms){ return Math.round(ms * SPEED); }
-function delayBetweenNotes(){
-  const base = DUR.randMin + Math.random()*(DUR.randMax - DUR.randMin);
-  return scaled(base);
-}
-
-/* -------- Проигрывание -------- */
-function playStep(){
-  if (timeline.length === 0) {
-    debugInfo.textContent = 'Нет данных для проигрывания.';
-    isPlaying = false;
-    return;
-  }
-  if (pointer >= timeline.length) pointer = 0;
-
-  const { digit, freq, span, pairEnd } = timeline[pointer++];
-
-  if (span) span.classList.add('active');
-  debugInfo.textContent = `Сейчас играет: ${digit} → ${freq.toFixed(2)} Гц`;
-
-  const now = Tone.now();
-  const lenSec = DUR.noteLen * SPEED;
-  synth.triggerAttackRelease(freq, lenSec, now);
-
-  setTimeout(()=>{ if(span) span.classList.remove('active'); }, lenSec*1000 - 10);
-
-  const wait = delayBetweenNotes() + (pairEnd ? scaled(DUR.pairGap) : 0);
-  playingTimer = setTimeout(playStep, wait);
-}
-
-/* -------- Firebase listener -------- */
-datesRef.on('value', snap=>{
-  if(!isPlaying) return;
-  const val = snap.val();
-  if(!val || Object.keys(val).length===0){
-    rightPane.textContent='Нет данных для проигрывания.';
-    timeline=[]; pointer=0;
-    if(playingTimer) clearTimeout(playingTimer);
-    return;
-  }
-  const arr = Object.values(val);
-  buildVisualAndTimeline(arr);
-  if(playingTimer) clearTimeout(playingTimer);
-  playStep();
-});
-
-/* -------- Старт -------- */
-startBtn.addEventListener('click', async ()=>{
-  await Tone.start();
-  initSynth();
-
-  startBtn.style.display='none';
-  formSection.style.display='block';
-
-  datesRef.once('value').then(snap=>{
-    const val = snap.val();
-    if(!val || Object.keys(val).length===0){
-      rightPane.textContent='Нет данных для проигрывания.';
-      return;
-    }
-    const arr = Object.values(val);
-    buildVisualAndTimeline(arr);
-    isPlaying=true;
-    playStep();
-  });
-});
-
-/* -------- Добавление дат -------- */
-addBtn.addEventListener('click', ()=>{
-  const bStr = birthInput.value.trim();
-  const dStr = deathInput.value.trim();
-
-  const bDate = parseValidDate(bStr);
-  const dDate = parseValidDate(dStr);
-
-  if(!bDate || !dDate){
-    statusEl.textContent='Ошибка: формат строго ДД.ММ.ГГГГ';
-    statusEl.style.color='red';
-    return;
-  }
-  // Разрешаем один день, запрещаем только если смерть раньше
-  if(dDate.getTime() < bDate.getTime()){
-    statusEl.textContent='Ошибка: дата смерти раньше даты рождения.';
-    statusEl.style.color='red';
-    return;
-  }
-
-  const bDigits = bStr.replace(/\D/g,'');
-  const dDigits = dStr.replace(/\D/g,'');
-
-  const digits = (bDigits + dDigits).split('').map(Number);
-  datesRef.push({ birth:bDigits, death:dDigits, digits });
-
-  statusEl.textContent='Добавлено!';
-  statusEl.style.color='green';
-  birthInput.value=''; deathInput.value='';
-});
-</script>
+<!-- ===== ВАЖНО: твои модули приложения ===== -->
+<!-- Порядок имеет значение: сначала конфиг, потом синт, визуал, плеер, база, мейн -->
+<script src="config.js"></script>
+<script src="synth.js"></script>
+<script src="visual.js"></script>
+<script src="player.js"></script>
+<script src="data.js"></script>
+<script src="main.js"></script>
 </body>
 </html>
