@@ -1,62 +1,92 @@
+// data.js — Firebase RTDB + единые серверные часы по .info/serverTimeOffset
 (function(){
   const Data = {};
-  let ready = false, db=null, ref=null;
+  let ready = false;
+  let db = null;
+  let datesRef = null;
 
+  // ===== ИНИЦИАЛИЗАЦИЯ =====
   Data.init = function(){
-    const info = document.getElementById('debugInfo');
-    try{
-      if (typeof firebase === 'undefined') throw new Error('Firebase не загрузился');
-      // Идемпотентная инициализация (без "duplicate-app")
-      if (!firebase.apps || !firebase.apps.length) {
-        firebase.initializeApp(AppConfig.firebaseConfig);
-      } else {
-        firebase.app();
+    if (ready) return true;
+    try {
+      // firebaseConfig и AppConfig задаются в config.js
+const cfg =
+  (window.AppConfig && window.AppConfig.firebaseConfig) ||
+  window.firebaseConfig ||                 // запасной вариант, если вдруг задашь глобально
+  (typeof firebaseConfig !== 'undefined' ? firebaseConfig : null);
+
+if (!cfg) { console.error('[Data.init] firebaseConfig not found'); return false; }     
+
+      if (!firebase.apps || firebase.apps.length === 0) {
+        firebase.initializeApp(cfg);
       }
       db = firebase.database();
-      ref = db.ref(AppConfig.DB_PATH || 'dates');
+
+      const path = (window.AppConfig && AppConfig.DB_PATH) ? AppConfig.DB_PATH : 'dates';
+      datesRef = db.ref(path);
+
       ready = true;
       return true;
-    }catch(e){
-      console.error(e);
-      if (info) info.textContent = 'Ошибка инициализации Firebase.';
+    } catch (e){
+      console.error('[Data.init] Firebase init error:', e);
       return false;
     }
   };
 
-  Data.isReady = ()=> ready;
-
+  // ===== ЧТЕНИЕ СПИСКА ДАТ (старые → новые) =====
+  // handler(list) — list: [{id, birth, death, digits?}, ...]
   Data.subscribe = function(handler, onError){
-  if (!ready && !Data.init()) return;
+    if (!ready && !Data.init()) return;
 
-  ref.on('value', (snap)=>{
-    const val = snap.val();
-    if (!val) { handler([]); return; }
+    datesRef.on('value', (snap)=>{
+      const val = snap.val();
+      if (!val) { handler([]); return; }
 
-    // СТРОГО: по возрастанию ключа (старые → новые) — как в TD
-    const list = Object.entries(val)
-      .sort(([ka],[kb]) => ka.localeCompare(kb))
-      .map(([key, obj]) => ({ id: key, ...obj }));
+      // строго сортируем по ключу (push-id) — старые → новые
+      const list = Object.entries(val)
+        .sort(([ka],[kb]) => ka.localeCompare(kb))
+        .map(([id, obj]) => ({ id, ...obj }));
 
-    handler(list);
-  }, (err)=>{
-    console.error(err);
-    if (onError) onError(err);
-  });
-};
-
-
-
-  // Возвращает Promise<boolean>
-  Data.pushDate = function(bDigits, dDigits){
-    if (!ready && !Data.init()) return Promise.resolve(false);
-    const digits = (bDigits + dDigits).split('').map(Number);
-    return new Promise((resolve)=>{
-      ref.push({ birth: bDigits, death: dDigits, digits }, (err)=>{
-        if (err) { console.error('push error', err); resolve(false); }
-        else resolve(true);
-      });
+      handler(list);
+    }, (err)=>{
+      console.error('[Data.subscribe]', err);
+      if (onError) onError(err);
     });
   };
 
+  // ===== ДОБАВЛЕНИЕ ДАТЫ =====
+  // bDigits/dDigits: строки вида "ДДММГГГГ" (без точек)
+  Data.pushDate = async function(bDigits, dDigits){
+    if (!ready && !Data.init()) return false;
+    try {
+      const digits = (bDigits + dDigits).split('').map(n => +n);
+      await datesRef.push({ birth: bDigits, death: dDigits, digits });
+      return true;
+    } catch (e){
+      console.error('[Data.pushDate]', e);
+      return false;
+    }
+  };
+
+  // ===== СЕРВЕРНОЕ ВРЕМЯ ЧЕРЕЗ .info/serverTimeOffset =====
+  let offsetRef = null;
+  let serverOffsetMs = 0;
+
+  Data.watchServerOffset = function(){
+    if (!ready && !Data.init()) return false;
+    if (!offsetRef) offsetRef = db.ref('.info/serverTimeOffset');
+    offsetRef.on('value', (snap)=>{
+      const off = Number(snap.val() || 0);
+      serverOffsetMs = off;
+    });
+    return true;
+  };
+
+  // server "now" = local now + offset
+  Data.serverNow = function(){
+    return Date.now() + (serverOffsetMs || 0);
+  };
+
+  // Экспорт
   window.Data = Data;
 })();

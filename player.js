@@ -58,7 +58,7 @@
   // Текущая фаза с учётом якоря
   function phaseNow(total){
     if (!total) return 0;
-    let p = (Date.now() - SYNC_EPOCH_MS - phaseBiasMs) % total;
+    let p = (Data.serverNow() - SYNC_EPOCH_MS - phaseBiasMs) % total;
     return p < 0 ? p + total : p;
   }
 
@@ -72,7 +72,7 @@
   }
 
   function nextBoundaryTime(total){
-    const now = Date.now();
+    const now = Data.serverNow();
     if (!total) return now;
     const k   = Math.floor((now - SYNC_EPOCH_MS) / total);
     return SYNC_EPOCH_MS + (k+1)*total;
@@ -182,7 +182,7 @@
       // 3) подстроим якорь так, чтобы фаза ПОСЛЕ удлинения осталась pOld
       //    pNew = (now - epoch - bias) % total_active == pOld
       // => bias = (now - epoch - pOld) % total_active
-      const now = Date.now();
+      const now = Data.serverNow();
       phaseBiasMs = (now - SYNC_EPOCH_MS - pOld) % (total_active || 1);
       if (phaseBiasMs < 0) phaseBiasMs += (total_active || 1);
 
@@ -205,7 +205,7 @@
     if (!running){ return; }
 
     // Переключение НЕ-append на границе
-    if (switchAtMs && Date.now() >= switchAtMs && TL_pending){
+    if (switchAtMs && Data.serverNow() >= switchAtMs && TL_pending){
       // Якорь: новый цикл начнётся строго с 0
       phaseBiasMs = (switchAtMs - SYNC_EPOCH_MS) % (total_pending || 1);
       if (phaseBiasMs < 0) phaseBiasMs += (total_pending || 1);
