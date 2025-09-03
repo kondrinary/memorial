@@ -1,4 +1,4 @@
-// player.js — индекс по РОВНОЙ сетке + анти-пропуск границы (catch-up)
+// player.js — индекс по РОВНОЙ сетке + anti-miss + непрерывность при append
 (function(){
   const { SYNC_EPOCH_MS, SPEED, DUR } = window.AppConfig;
   const GRID_MS = (window.AppConfig?.SYNC?.GRID_MS) || 700;
@@ -6,7 +6,7 @@
   let running = false;
   let rafId   = null;
 
-  // Активный TL (только цифры/частоты/ссылки на спаны)
+  // Активный TL (цифры/частоты/ссылки на спаны)
   let TL_active = [];
   let N_active  = 0;
 
@@ -20,20 +20,44 @@
   let lastSpan = null;
 
   // Планировщик
-  const LOOKAHEAD_MS    = Math.min(900, Math.floor(GRID_MS * 0.85)); // большой lookahead, чтобы не промахнуться
-  const SCHED_TICK_MS   = 30;   // чаще тикаем
-  const MISS_TOL_MS     = 150;  // если границу чуть ПРОСПАЛИ — всё равно сыграть (catch-up)
-  let   lastScheduledBeat = null; // защита от двойной постановки в один и тот же beat
-
-  function nextGridBoundaryMs(nowMs, epochMs, gridMs){
-    const beat = Math.floor((nowMs - epochMs) / gridMs);
-    return { nextMs: epochMs + (beat + 1) * gridMs, beat };
-  }
+  const LOOKAHEAD_MS     = Math.min(900, Math.floor(GRID_MS * 0.85));
+  const SCHED_TICK_MS    = 30;
+  const MISS_TOL_MS      = 150;      // catch-up, если границу чуть проспали
+  let   lastScheduledBeat= null;     // защита от двойной постановки одного и того же beat
 
   function highlight(span){
     if (lastSpan && lastSpan !== span) lastSpan.classList.remove('active');
     if (span) span.classList.add('active');
     lastSpan = span;
+  }
+
+  function scheduleForBeat(targetBeat, boundaryMs, isCatchUp=false){
+    lastScheduledBeat = targetBeat;
+
+    // Вычисляем индекс ноты **из целевого beat**, чтобы не было «отката»
+    if (switchAtMs && Math.abs(boundaryMs - switchAtMs) <= 8 && TL_pending) {
+      // На границе переключения: продолжить по времени на новом TL
+      if (!N_pending) return;
+      const nextIdxNew = ((targetBeat % N_pending) + N_pending) % N_pending;
+      const node = TL_pending[nextIdxNew];
+      if (node && window.Synth?.trigger){
+        const lenSec  = (DUR.noteLen || 0.35) * (SPEED || 1);
+        const delaySec= Math.max(0, (boundaryMs - Data.serverNow()) / 1000);
+        const whenAbs = Tone.now() + (isCatchUp ? Math.max(0.01, delaySec) : delaySec);
+        Synth.trigger(node.freq, lenSec, 0.8, whenAbs);
+      }
+    } else {
+      // Обычный случай: продолжаем по временнОй сетке на активном TL
+      if (!N_active) return;
+      const nextIdx = ((targetBeat % N_active) + N_active) % N_active;
+      const node    = TL_active[nextIdx];
+      if (node && window.Synth?.trigger){
+        const lenSec  = (DUR.noteLen || 0.35) * (SPEED || 1);
+        const delaySec= Math.max(0, (boundaryMs - Data.serverNow()) / 1000);
+        const whenAbs = Tone.now() + (isCatchUp ? Math.max(0.01, delaySec) : delaySec);
+        Synth.trigger(node.freq, lenSec, 0.8, whenAbs);
+      }
+    }
   }
 
   const Player = {};
@@ -90,11 +114,12 @@
     TL_pending = TL_new;
     N_pending  = TL_pending.length | 0;
 
-    const nowSrv = Data.serverNow();
-    const { nextMs } = nextGridBoundaryMs(nowSrv, SYNC_EPOCH_MS, GRID_MS);
-    switchAtMs = nextMs;
+    const nowSrv   = Data.serverNow();
+    const curBeat  = Math.floor((nowSrv - SYNC_EPOCH_MS) / GRID_MS);
+    const nextMs   = SYNC_EPOCH_MS + (curBeat + 1) * GRID_MS;
+    switchAtMs     = nextMs;
 
-    // чтобы не осталась старая постановка на эту же границу
+    // Сброс, чтобы не осталось старой постановки на эту же границу
     lastScheduledBeat = null;
   };
 
@@ -103,7 +128,8 @@
   function tick(){
     if (!running){ return; }
 
-    const nowSrv = Data.serverNow();
+    const nowSrv  = Data.serverNow();
+    const curBeat = Math.floor((nowSrv - SYNC_EPOCH_MS) / GRID_MS);
 
     // Переключение TL строго на общей границе сетки
     if (switchAtMs && nowSrv >= switchAtMs && TL_pending){
@@ -114,7 +140,7 @@
       switchAtMs = null;
 
       lastIdx = -1;
-      lastScheduledBeat = null;
+      // Не трогаем lastScheduledBeat: планирование идёт по targetBeat
     }
 
     if (!N_active){
@@ -123,22 +149,21 @@
     }
 
     // Индекс по сетке (железная синхронизация)
-    const curBeat   = Math.floor((nowSrv - SYNC_EPOCH_MS) / GRID_MS);
-    const idxNow    = ((curBeat % N_active) + N_active) % N_active;
+    const idxNow = ((curBeat % N_active) + N_active) % N_active;
 
-    // === Планирование звука на СЛЕДУЮЩУЮ границу (или catch-up, если промахнулись) ===
-    const boundaryAbs = SYNC_EPOCH_MS + (curBeat + 1) * GRID_MS;
+    // === Планирование звука на СЛЕДУЮЩИЙ beat (или catch-up, если промахнулись) ===
+    const nextBeat    = curBeat + 1;
+    const boundaryAbs = SYNC_EPOCH_MS + nextBeat * GRID_MS;
     const dtMs        = boundaryAbs - nowSrv;
 
-    // 1) обычный план — если граница впереди и мы ещё не ставили этот beat
-    if (dtMs > 0 && dtMs <= LOOKAHEAD_MS && lastScheduledBeat !== (curBeat + 1)){
-      scheduleForBeat(curBeat + 1, boundaryAbs, idxNow);
+    // 1) обычный план — если граница впереди и этот beat ещё не ставили
+    if (dtMs > 0 && dtMs <= LOOKAHEAD_MS && lastScheduledBeat !== nextBeat){
+      scheduleForBeat(nextBeat, boundaryAbs, /*isCatchUp=*/false);
     }
 
-    // 2) catch-up — если граница только что прошла, а мы её не поставили (мобилки могут «уснуть»)
-    if (dtMs <= 0 && -dtMs <= MISS_TOL_MS && lastScheduledBeat !== (curBeat + 1)){
-      // ставим «прямо сейчас + 10мс», чтобы не пропустить ноту текущего шага
-      scheduleForBeat(curBeat + 1, nowSrv + 10, idxNow, /*isCatchUp=*/true);
+    // 2) catch-up — если только что проскочили границу, и beat не поставлен
+    if (dtMs <= 0 && -dtMs <= MISS_TOL_MS && lastScheduledBeat !== nextBeat){
+      scheduleForBeat(nextBeat, nowSrv + 10, /*isCatchUp=*/true);
     }
 
     // Подсветка текущего индекса
@@ -153,29 +178,6 @@
     }
 
     setTimeout(()=>{ rafId = requestAnimationFrame(tick); }, SCHED_TICK_MS);
-  }
-
-  function scheduleForBeat(targetBeat, boundaryMs, idxNow, isCatchUp=false){
-    lastScheduledBeat = targetBeat;
-
-    // Если на этой границе назначено переключение TL — играем первый элемент нового TL
-    let node;
-    if (switchAtMs && Math.abs(boundaryMs - switchAtMs) <= 8 && TL_pending){
-      node = TL_pending[0];
-    } else {
-      const nextIdx = (idxNow + 1) % N_active;
-      node = TL_active[nextIdx];
-    }
-
-    if (!node) return;
-
-    const lenSec  = (DUR.noteLen || 0.35) * (SPEED || 1);
-    const delaySec= Math.max(0, (boundaryMs - Data.serverNow()) / 1000);
-    const whenAbs = Tone.now() + (isCatchUp ? Math.max(0.01, delaySec) : delaySec);
-
-    if (window.Synth?.trigger){
-      Synth.trigger(node.freq, lenSec, 0.8, whenAbs);
-    }
   }
 
   window.Player = Player;
