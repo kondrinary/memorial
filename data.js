@@ -1,4 +1,4 @@
-// data.js — Firebase RTDB + «серверные» часы + окна активации (1с) + журнал смен TL
+// data.js — RTDB + «серверные» часы + окно 1с + журнал смен TL
 (function(){
   const Data = {};
   let ready = false;
@@ -6,7 +6,7 @@
   let datesRef = null;
   let changesRef = null;
 
-  // ===== ИНИЦ =====
+  // ----- init -----
   Data.init = function(){
     if (ready) return true;
     try {
@@ -23,7 +23,7 @@
 
       const path = (window.AppConfig && AppConfig.DB_PATH) ? AppConfig.DB_PATH : 'dates';
       datesRef   = db.ref(path);
-      changesRef = db.ref('control/changes'); // журнал смен TL по окнам
+      changesRef = db.ref('control/changes'); // журнал смен (ключ — окно k)
 
       ready = true;
       return true;
@@ -33,7 +33,7 @@
     }
   };
 
-  // ===== ДОБАВЛЕНИЕ ДАТЫ (с серверным таймстампом) =====
+  // ----- push date -----
   Data.pushDate = async function(bDigits, dDigits){
     if (!ready && !Data.init()) return false;
     try {
@@ -42,7 +42,7 @@
         birth: bDigits,
         death: dDigits,
         digits,
-        ts: firebase.database.ServerValue.TIMESTAMP
+        ts: firebase.database.ServerValue.TIMESTAMP  // важно для окна
       });
       return true;
     } catch (e){
@@ -51,12 +51,10 @@
     }
   };
 
-  // ===== ПОДПИСКА НА ДАННЫЕ С ОКНОМ АКТИВАЦИИ (1 секунда) =====
+  // ----- subscribe with 1s activation window -----
   let _rawList = [];
   let _lastEmitIds = '';
   let _lastWindowId = null;
-
-  // последняя «активная» выдача (для Player.start)
   let _lastFilteredList = [];
   Data.getActiveList = function(){ return _lastFilteredList.slice(); };
 
@@ -103,7 +101,7 @@
 
   function _emitIfChanged(handler){
     const list = _filteredByWindow(_rawList);
-    _lastFilteredList = list; // сохраняем активную копию
+    _lastFilteredList = list;
 
     const ids = list.map(x=>x.id).join(',');
     if (ids !== _lastEmitIds){
@@ -122,29 +120,24 @@
       if (_lastWindowId === null) _lastWindowId = k;
       if (k !== _lastWindowId){
         _lastWindowId = k;
-        _emitIfChanged(handler); // новая секунда → синхронно включаем свежие записи
+        _emitIfChanged(handler);
       }
       setTimeout(tick, Math.max(100, Math.min(300, WIN_MS/5)));
     };
     tick();
   }
 
-  // ===== ЖУРНАЛ СМЕН TL (control/changes) =====
-  // Записать смену (идемпотентно): ключ — номер окна k. Кто успел первым, тот и записал.
+  // ----- change log (идемпотентно) -----
   Data.announceChange = async function(k, beat, n){
     if (!ready && !Data.init()) return;
     try {
       const ref = changesRef.child(String(k));
-      await ref.transaction(cur => cur || {
-        k, beat, n,
-        ts: firebase.database.ServerValue.TIMESTAMP
-      });
+      await ref.transaction(cur => cur || { k, beat, n, ts: firebase.database.ServerValue.TIMESTAMP });
     } catch(e){
-      // тихо игнорируем (возможно, уже записано другим клиентом)
+      /* ignore */
     }
   };
 
-  // Однократное чтение журнала (отдаёт отсортированный массив)
   Data.getChangeLogOnce = async function(){
     if (!ready && !Data.init()) return [];
     try{
@@ -157,17 +150,10 @@
     }
   };
 
-  // ===== «Серверные» часы (исправленный «якорь») =====
+  // ----- «серверные» часы: .info + HTTP-UTC с плавной подстройкой -----
   let offsetRef = null;
-
-  let _anchorServerNow = 0;
-  let _anchorPerfNow   = 0;
-  let _anchorLocalMs   = 0;   // локальный Date.now() в момент якоря
-  let _anchorOffset0   = 0;   // offset в момент якоря
-
-  let _rawFbOffsetMs   = 0;
-  let _stableOffsetMs  = 0;
-  let _httpOffsetMs    = 0;
+  let _anchorPerfNow = 0, _anchorLocalMs = 0, _anchorOffset0 = 0;
+  let _rawFbOffsetMs = 0, _httpOffsetMs = 0, _stableOffsetMs = 0;
 
   const CLOCK = (window.AppConfig && AppConfig.CLOCK) || {};
   const OFFSET_SLEW_MS = CLOCK.SLEW_MS  ?? 1500;
@@ -175,7 +161,7 @@
   const HTTP_URL       = CLOCK.HTTP_URL || 'https://worldtimeapi.org/api/timezone/Etc/UTC';
   const RESYNC_MS      = (CLOCK.RESYNC_SEC ?? 60) * 1000;
 
-  function _blendOffsets(httpOff, fbOff){
+  function _blend(httpOff, fbOff){
     if (CLOCK.USE_FIREBASE_OFFSET !== true) return httpOff;
     if (CLOCK.USE_HTTP_TIME !== true)       return fbOff;
     return (httpOff + fbOff) / 2;
@@ -190,14 +176,13 @@
       const newOff = Number(snap.val() || 0);
 
       if (_anchorPerfNow === 0){
-        _rawFbOffsetMs   = newOff;
-        _httpOffsetMs    = 0;
-        _stableOffsetMs  = newOff;
+        _rawFbOffsetMs  = newOff;
+        _httpOffsetMs   = 0;
+        _stableOffsetMs = newOff;
 
-        _anchorLocalMs   = Date.now();
-        _anchorOffset0   = _stableOffsetMs;
-        _anchorPerfNow   = performance.now();
-        _anchorServerNow = _anchorLocalMs + _anchorOffset0;
+        _anchorLocalMs  = Date.now();
+        _anchorOffset0  = _stableOffsetMs;
+        _anchorPerfNow  = performance.now();
         return;
       }
 
@@ -207,7 +192,7 @@
 
       const startPerf = performance.now();
       const startVal  = _stableOffsetMs;
-      const targetVal = _blendOffsets(_httpOffsetMs, _rawFbOffsetMs);
+      const targetVal = _blend(_httpOffsetMs, _rawFbOffsetMs);
 
       function _slew(){
         const t = (performance.now() - startPerf) / OFFSET_SLEW_MS;
@@ -243,9 +228,8 @@
           _anchorLocalMs   = Date.now();
           _anchorOffset0   = _stableOffsetMs;
           _anchorPerfNow   = performance.now();
-          _anchorServerNow = _anchorLocalMs + _anchorOffset0;
         } else {
-          const targetVal = _blendOffsets(_httpOffsetMs, _rawFbOffsetMs);
+          const targetVal = _blend(_httpOffsetMs, _rawFbOffsetMs);
           const startVal  = _stableOffsetMs;
           const startPerf = performance.now();
           function _slew(){
@@ -264,9 +248,7 @@
   })();
 
   Data.serverNow = function(){
-    if (_anchorPerfNow === 0){
-      return Date.now();
-    }
+    if (_anchorPerfNow === 0) return Date.now();
     const elapsed = performance.now() - _anchorPerfNow;
     return _anchorLocalMs + elapsed + (_stableOffsetMs - _anchorOffset0);
   };
