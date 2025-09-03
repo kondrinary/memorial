@@ -131,18 +131,18 @@
 
   // Воспроизведение ноты
 Synth.trigger = function (freq, lenSec, vel = 0.65, whenAbs = null) {
-    if (!ready) return;
-    const nowTone = Tone.now();
-    const when = (whenAbs != null) ? whenAbs : (nowTone + 0.015); // 15 мс на разлёт
+  if (!ready) return;
+  const nowTone = Tone.now();
+  const when = (whenAbs != null) ? whenAbs : (nowTone + 0.015); // 15 мс на разлёт
 
-    bodyPoly.triggerAttackRelease(freq, lenSec, when, vel);
+  bodyPoly.triggerAttackRelease(freq, lenSec, when, vel);
 
-    if (Synth.fx.attackLevel > 0.001) {
-      const atkLen = Math.min(lenSec, 0.10);
-      const atkVel = Math.min(1, vel * 0.6);
-      attackPoly.triggerAttackRelease(freq, atkLen, when, atkVel);
-    }
-  };
+  if (Synth.fx.attackLevel > 0.001) {
+    const atkLen = Math.min(lenSec, 0.10);
+    const atkVel = Math.min(1, vel * 0.6);
+    attackPoly.triggerAttackRelease(freq, atkLen, when, atkVel);
+  }
+};
 
   // Живая правка (опционально)
   Synth.setFX = function (partial) {

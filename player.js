@@ -6,6 +6,7 @@
   let running = false;
   let rafId   = null;
 
+
   // ---- АКТИВНОЕ СОСТОЯНИЕ ----
   let TL_active    = [];   // [{digit,freq,span,pairEnd}, ...]
   let dur_active   = [];   // мс на индекс
@@ -29,6 +30,7 @@
     // Планировщик
   const LOOKAHEAD_MS   = 200;   // заглядываем вперёд ~0.2с
   const SCHED_TICK_MS  = 60;    // шаг планировщика
+  let lastPlannedBoundaryMs = -1;
 
   // ===== УТИЛИТЫ =====
   function mulberry32(a){ return function(i){
@@ -83,6 +85,15 @@
     if (span) span.classList.add('active');
     lastSpan = span;
   }
+
+
+// Сколько мс до конца текущего индекса (до границы)
+function msToIndexBoundary(p, cum) {
+  const idx = indexForPhase(cum, p);
+  const end = cum[idx];           // время конца текущего индекса (мс с начала цикла)
+  return Math.max(0, end - p);    // сколько осталось
+}
+
 
   // ===== ПУБЛИЧНОЕ API =====
   const Player = {};
@@ -201,68 +212,69 @@
   // совместимость
   Player.rebuildAndResync = Player.onTimelineChanged;
 
-    function tick(){
-    if (!running){ return; }
+function tick(){
+  if (!running){ return; }
 
-    // Переключение НЕ-append на границе цикла
-    if (switchAtMs && Data.serverNow() >= switchAtMs && TL_pending){
-      phaseBiasMs = (switchAtMs - SYNC_EPOCH_MS) % (total_pending || 1);
-      if (phaseBiasMs < 0) phaseBiasMs += (total_pending || 1);
+  // Переключение НЕ-append строго на границе цикла
+  if (switchAtMs && Data.serverNow() >= switchAtMs && TL_pending){
+    phaseBiasMs = (switchAtMs - SYNC_EPOCH_MS) % (total_pending || 1);
+    if (phaseBiasMs < 0) phaseBiasMs += (total_pending || 1);
 
-      TL_active     = TL_pending;
-      dur_active    = dur_pending;
-      cum_active    = cum_pending;
-      total_active  = total_pending;
+    TL_active     = TL_pending;
+    dur_active    = dur_pending;
+    cum_active    = cum_pending;
+    total_active  = total_pending;
 
-      TL_pending    = null;
-      dur_pending   = null;
-      cum_pending   = null;
-      total_pending = 0;
-      switchAtMs    = null;
+    TL_pending    = null;
+    dur_pending   = null;
+    cum_pending   = null;
+    total_pending = 0;
+    switchAtMs    = null;
 
-      lastIdx = -1; // чтобы подсветка обновилась
-    }
-
-    const N = TL_active.length;
-    if (!N || !total_active){
-      rafId = requestAnimationFrame(tick);
-      return;
-    }
-
-    // Текущая фаза/индекс СЕЙЧАС
-    const pNow   = phaseNow(total_active);
-    const idxNow = indexForPhase(cum_active, pNow);
-
-    // === ПЛАНИРОВЩИК: ближайшая граница индекса ===
-    const dtMs = msToIndexBoundary(pNow, cum_active); // через сколько мс граница
-    if (dtMs <= LOOKAHEAD_MS){
-      const nextIdx = idxNow; // на границе зазвучит СЛЕДУЮЩИЙ элемент массива по времени — это именно текущий idx после перехода
-      const node    = TL_active[nextIdx];
-      const lenSec  = (DUR.noteLen || 0.35) * (SPEED || 1);
-
-      // пересчёт «серверная задержка» → Tone.now()
-      const nowSrv       = Data.serverNow();
-      const boundaryAbs  = nowSrv + dtMs;              // UTC-мс в момент границы
-      const delaySec     = Math.max(0, dtMs / 1000);
-      const whenAbsTone  = Tone.now() + delaySec;
-
-      if (window.Synth && typeof Synth.trigger === 'function'){
-        Synth.trigger(node.freq, lenSec, 0.8, whenAbsTone);
-      }
-    }
-
-    // Визуальная подсветка — по факту «текущего» индекса (может отставать ≤1 кадра — это ок)
-    if (idxNow !== lastIdx){
-      const { digit, freq, span } = TL_active[idxNow];
-      highlight(span);
-      const debug = document.getElementById('debugInfo');
-      if (debug) debug.textContent = `Играет: ${digit} → ${freq.toFixed(2)} Гц (idx ${idxNow})`;
-      lastIdx = idxNow;
-    }
-
-    // мягкий цикл планировщика
-    setTimeout(()=>{ rafId = requestAnimationFrame(tick); }, SCHED_TICK_MS);
+    lastIdx = -1; // чтобы подсветка обновилась
   }
+
+  const N = TL_active.length;
+  if (!N || !total_active){
+    rafId = requestAnimationFrame(tick);
+    return;
+  }
+
+  // Текущая фаза/индекс СЕЙЧАС
+  const pNow   = phaseNow(total_active);
+  const idxNow = indexForPhase(cum_active, pNow);
+
+  // === ПЛАНИРОВЩИК: ставим ноту на СЛЕДУЮЩУЮ границу индекса ===
+  const dtMs = msToIndexBoundary(pNow, cum_active);     // через сколько мс будет граница
+  const boundaryAbs = Data.serverNow() + dtMs;          // UTC-мс момента границы
+
+  if (dtMs <= LOOKAHEAD_MS && boundaryAbs !== lastPlannedBoundaryMs){
+    lastPlannedBoundaryMs = boundaryAbs;
+
+    // ВАЖНО: на границе начнётся СЛЕДУЮЩИЙ индекс
+    const nextIdx = (idxNow + 1) % N;
+    const node    = TL_active[nextIdx];
+    const lenSec  = (DUR.noteLen || 0.35) * (SPEED || 1);
+
+    const whenAbsTone = Tone.now() + Math.max(0, dtMs/1000);
+    if (window.Synth && typeof Synth.trigger === 'function'){
+      Synth.trigger(node.freq, lenSec, 0.8, whenAbsTone);
+    }
+  }
+
+  // Подсветка — «по факту» текущего индекса (может отставать ≤ 1 кадра — это норм)
+  if (idxNow !== lastIdx){
+    const { digit, freq, span } = TL_active[idxNow];
+    highlight(span);
+    const debug = document.getElementById('debugInfo');
+    if (debug) debug.textContent = `Играет: ${digit} → ${freq.toFixed(2)} Гц (idx ${idxNow})`;
+    lastIdx = idxNow;
+  }
+
+  // Мягкий цикл планировщика
+  setTimeout(()=>{ rafId = requestAnimationFrame(tick); }, SCHED_TICK_MS);
+}
+
 
 
   // время до ближайшей границы ТЕКУЩЕГО индекса, мс
