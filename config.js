@@ -1,5 +1,15 @@
 // config.js — глобальные настройки проекта
 window.AppConfig = {
+
+CLOCK: {
+    USE_FIREBASE_OFFSET: true,         // .info/serverTimeOffset
+    USE_HTTP_TIME: true,               // HTTP-«NTP» (worldtimeapi) как доп. источник
+    HTTP_URL: 'https://worldtimeapi.org/api/timezone/Etc/UTC',
+    RESYNC_SEC: 60,                    // как часто уточнять HTTP-время
+    SLEW_MS: 1500,                     // плавное подтягивание смещения (без скачка)
+    JITTER_MS: 8                       // игнорировать микрошум offset’а до ±8 мс
+  },
+
   // Скорость: 2 = медленнее; 0.5 = быстрее
   SPEED: 1,
 
