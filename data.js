@@ -40,7 +40,7 @@
         birth: bDigits,
         death: dDigits,
         digits,
-        ts: firebase.database.ServerValue.TIMESTAMP   // ключевое для окон
+        ts: firebase.database.ServerValue.TIMESTAMP
       });
       return true;
     } catch (e){
@@ -53,6 +53,12 @@
   let _rawList = [];
   let _lastEmitIds = '';
   let _lastWindowId = null;
+
+  // Храним последнюю «активную» выдачу (нужна для детерминированного стартового offset)
+  let _lastFilteredList = [];
+  Data.getActiveList = function(){
+    return _lastFilteredList.slice();
+  };
 
   Data.subscribe = function(handler, onError){
     if (!ready && !Data.init()) return;
@@ -89,6 +95,11 @@
     return { k, windowStart, WIN_MS };
   }
 
+  // Доступно снаружи — для Player
+  Data.currentWindowInfo = function(){
+    return _windowInfo(Data.serverNow());
+  };
+
   function _filteredByWindow(raw){
     const now = Data.serverNow();
     const { windowStart } = _windowInfo(now);
@@ -97,6 +108,8 @@
 
   function _emitIfChanged(handler){
     const list = _filteredByWindow(_rawList);
+    _lastFilteredList = list; // <— сохраняем «активную» копию для Player.start()
+
     const ids = list.map(x=>x.id).join(',');
     if (ids !== _lastEmitIds){
       _lastEmitIds = ids;
@@ -116,7 +129,7 @@
         _lastWindowId = k;
         _emitIfChanged(handler); // новая секунда → включить свежие записи синхронно
       }
-      setTimeout(tick, Math.max(100, Math.min(300, WIN_MS/5))); // лёгкий цикл
+      setTimeout(tick, Math.max(100, Math.min(300, WIN_MS/5)));
     };
     tick();
   }
@@ -124,13 +137,11 @@
   // ===== СТАБИЛЬНЫЕ «СЕРВЕРНЫЕ» ЧАСЫ (исправленный «якорь») =====
   let offsetRef = null;
 
-  // якорим serverNow
   let _anchorServerNow = 0;
   let _anchorPerfNow   = 0;
   let _anchorLocalMs   = 0;   // локальный Date.now() в момент якоря
   let _anchorOffset0   = 0;   // offset в момент якоря
 
-  // оценки смещения
   let _rawFbOffsetMs   = 0;
   let _stableOffsetMs  = 0;
   let _httpOffsetMs    = 0;
@@ -187,7 +198,6 @@
     return true;
   };
 
-  // HTTP-UTC как доп. источник (браузеру недоступен UDP/NTP)
   (function httpClockSync(){
     if (CLOCK.USE_HTTP_TIME !== true) return;
 
@@ -220,7 +230,7 @@
             if (t >= 1){ _stableOffsetMs = targetVal; return; }
             const k = 1 - Math.pow(1 - t, 3);
             _stableOffsetMs = startVal + (targetVal - startVal) * k;
-            requestAnimationFrame(_slew);
+          requestAnimationFrame(_slew);
           }
           _slew();
         }
