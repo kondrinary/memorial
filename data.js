@@ -1,4 +1,4 @@
-// data.js — Firebase RTDB + единые «серверные» часы + ОКНА АКТИВАЦИИ
+// data.js — Firebase RTDB + единые «серверные» часы + окна активации (1 сек)
 (function(){
   const Data = {};
   let ready = false;
@@ -40,7 +40,7 @@
         birth: bDigits,
         death: dDigits,
         digits,
-        ts: firebase.database.ServerValue.TIMESTAMP   // <-- ключевое
+        ts: firebase.database.ServerValue.TIMESTAMP   // ключевое для окон
       });
       return true;
     } catch (e){
@@ -49,11 +49,10 @@
     }
   };
 
-  // ===== ПОДПИСКА С ОКНОМ АКТИВАЦИИ =====
-  // Новые записи попадают только на границе окна, синхронно на всех клиентах.
-  let _rawList = [];          // последняя сырая выборка из БД (всех записей)
-  let _lastEmitIds = '';      // чтобы не дергать рендер без изменений
-  let _lastWindowId = null;   // отслеживаем смену окна
+  // ===== ПОДПИСКА С ОКНОМ АКТИВАЦИИ (частота 1 сек) =====
+  let _rawList = [];
+  let _lastEmitIds = '';
+  let _lastWindowId = null;
 
   Data.subscribe = function(handler, onError){
     if (!ready && !Data.init()) return;
@@ -63,43 +62,37 @@
       if (!val) { _rawList = []; _emitIfChanged(handler); return; }
 
       _rawList = Object.entries(val)
-        .sort(([ka],[kb]) => ka.localeCompare(kb))     // стабильный порядок
+        .sort(([ka],[kb]) => ka.localeCompare(kb))
         .map(([id, obj]) => ({
           id,
           birth: obj.birth,
           death: obj.death,
           digits: obj.digits,
-          ts: typeof obj.ts === 'number' ? obj.ts : 0   // старые записи без ts считаем «старыми»
+          ts: typeof obj.ts === 'number' ? obj.ts : 0
         }));
 
-      _emitIfChanged(handler); // возможно, уже попали в текущее окно
+      _emitIfChanged(handler);
     }, (err)=>{
       console.error('[Data.subscribe]', err);
       if (onError) onError(err);
     });
 
-    // «Тик» по границе окна — чтобы включить записи, которые уже пришли,
-    // но ждали ближайшую границу.
     _setupWindowTicker(handler);
   };
 
-  // === ФИЛЬТР ПО ОКНУ ===
   function _windowInfo(nowMs){
     const { SYNC_EPOCH_MS } = AppConfig;
-    const { MS:WIN_MS, DELAY_MS } = AppConfig.WINDOW || { MS:60000, DELAY_MS:3000 };
+    const { MS:WIN_MS, DELAY_MS } = AppConfig.WINDOW || { MS:1000, DELAY_MS:200 };
     const t = nowMs - (DELAY_MS || 0);
     const k = Math.floor((t - SYNC_EPOCH_MS) / WIN_MS);
-    const windowStart = SYNC_EPOCH_MS + k * WIN_MS; // абсолютное UTC-время начала ОКНА
+    const windowStart = SYNC_EPOCH_MS + k * WIN_MS;
     return { k, windowStart, WIN_MS };
   }
 
   function _filteredByWindow(raw){
     const now = Data.serverNow();
     const { windowStart } = _windowInfo(now);
-    // Берём только записи, которые «успели» в текущее окно:
-    // ts <= windowStart  (ts — серверный timestamp Firebase)
-    const list = raw.filter(x => (x.ts || 0) <= windowStart);
-    return list;
+    return raw.filter(x => (x.ts || 0) <= windowStart);
   }
 
   function _emitIfChanged(handler){
@@ -115,34 +108,33 @@
     if (_setupWindowTicker._started) return;
     _setupWindowTicker._started = true;
 
-    const { MS:WIN_MS } = AppConfig.WINDOW || { MS:60000 };
+    const { MS:WIN_MS } = AppConfig.WINDOW || { MS:1000 };
     const tick = ()=>{
       const { k } = _windowInfo(Data.serverNow());
       if (_lastWindowId === null) _lastWindowId = k;
       if (k !== _lastWindowId){
         _lastWindowId = k;
-        _emitIfChanged(handler); // граница окна → пересобрать выдачу синхронно
+        _emitIfChanged(handler); // новая секунда → включить свежие записи синхронно
       }
-      setTimeout(tick, Math.max(250, Math.min(1000, WIN_MS/10))); // лёгкий цикл
+      setTimeout(tick, Math.max(100, Math.min(300, WIN_MS/5))); // лёгкий цикл
     };
     tick();
   }
 
-  // ===== СТАБИЛЬНЫЕ «СЕРВЕРНЫЕ» ЧАСЫ: якорь + slew + HTTP-время =====
+  // ===== СТАБИЛЬНЫЕ «СЕРВЕРНЫЕ» ЧАСЫ (исправленный «якорь») =====
   let offsetRef = null;
 
   // якорим serverNow
-  let _anchorServerNow = 0;   // UTC-мс на момент старта (для справки)
-  let _anchorPerfNow   = 0;   // performance.now() на момент старта
-  let _anchorLocalMs   = 0;   // локальное Date.now() в момент якоря
-  let _anchorOffset0   = 0;   // offset (stable) в момент якоря
+  let _anchorServerNow = 0;
+  let _anchorPerfNow   = 0;
+  let _anchorLocalMs   = 0;   // локальный Date.now() в момент якоря
+  let _anchorOffset0   = 0;   // offset в момент якоря
 
-  // текущие оценки смещения (локальные→серверные), мс
-  let _rawFbOffsetMs   = 0;   // что пришло от Firebase .info
-  let _stableOffsetMs  = 0;   // сглаженная итоговая оценка
-  let _httpOffsetMs    = 0;   // оценка от HTTP-времени
+  // оценки смещения
+  let _rawFbOffsetMs   = 0;
+  let _stableOffsetMs  = 0;
+  let _httpOffsetMs    = 0;
 
-  // параметры из конфига
   const CLOCK = (window.AppConfig && AppConfig.CLOCK) || {};
   const OFFSET_SLEW_MS = CLOCK.SLEW_MS  ?? 1500;
   const OFFSET_JITTER  = CLOCK.JITTER_MS?? 8;
@@ -155,7 +147,6 @@
     return (httpOff + fbOff) / 2;
   }
 
-  // 1) Firebase offset
   Data.watchServerOffset = function(){
     if (!ready && !Data.init()) return false;
     if (CLOCK.USE_FIREBASE_OFFSET !== true) return true;
@@ -172,7 +163,6 @@
         _anchorLocalMs   = Date.now();
         _anchorOffset0   = _stableOffsetMs;
         _anchorPerfNow   = performance.now();
-
         _anchorServerNow = _anchorLocalMs + _anchorOffset0;
         return;
       }
@@ -197,7 +187,7 @@
     return true;
   };
 
-  // 2) HTTP-время (UTC)
+  // HTTP-UTC как доп. источник (браузеру недоступен UDP/NTP)
   (function httpClockSync(){
     if (CLOCK.USE_HTTP_TIME !== true) return;
 
@@ -217,11 +207,9 @@
 
         if (_anchorPerfNow === 0){
           _stableOffsetMs  = _httpOffsetMs;
-
           _anchorLocalMs   = Date.now();
           _anchorOffset0   = _stableOffsetMs;
           _anchorPerfNow   = performance.now();
-
           _anchorServerNow = _anchorLocalMs + _anchorOffset0;
         } else {
           const targetVal = _blendOffsets(_httpOffsetMs, _rawFbOffsetMs);
@@ -242,15 +230,13 @@
     poll();
   })();
 
-  // 3) Текущее «серверное» время
   Data.serverNow = function(){
     if (_anchorPerfNow === 0){
-      return Date.now(); // пока нет эталона
+      return Date.now();
     }
     const elapsed = performance.now() - _anchorPerfNow;
     return _anchorLocalMs + elapsed + (_stableOffsetMs - _anchorOffset0);
   };
 
-  // Экспорт
   window.Data = Data;
 })();
