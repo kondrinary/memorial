@@ -68,8 +68,12 @@
   let offsetRef = null;
 
   // якорим serverNow: считаем от монотонных часов, чтобы не было скачков
-  let _anchorServerNow = 0;   // миллисекунды UTC на момент старта
+  let _anchorServerNow = 0;   // UTC-мс на момент старта (для справки)
   let _anchorPerfNow   = 0;   // performance.now() на момент старта
+
+  // ДОБАВЛЕНО: правильные якоря локального времени и смещения
+  let _anchorLocalMs   = 0;   // локальное Date.now() в момент якоря
+  let _anchorOffset0   = 0;   // offset (stable) в момент якоря
 
   // текущие оценки смещения (локальные→серверные), мс
   let _rawFbOffsetMs   = 0;   // что пришло от Firebase .info
@@ -83,11 +87,11 @@
   const HTTP_URL       = CLOCK.HTTP_URL || 'https://worldtimeapi.org/api/timezone/Etc/UTC';
   const RESYNC_MS      = (CLOCK.RESYNC_SEC ?? 60) * 1000;
 
-  // общая функция смешивания оценок времени (видна из обоих блоков)
+  // смешиваем оценки offset’а (можно усложнить весами по RTT)
   function _blendOffsets(httpOff, fbOff){
     if (CLOCK.USE_FIREBASE_OFFSET !== true) return httpOff;
     if (CLOCK.USE_HTTP_TIME !== true)       return fbOff;
-    return (httpOff + fbOff) / 2; // простое усреднение
+    return (httpOff + fbOff) / 2;
   }
 
   // 1) Firebase offset — слушаем и плавно тянемся
@@ -99,13 +103,17 @@
     offsetRef.on('value', (snap)=>{
       const newOff = Number(snap.val() || 0);
 
-      // первый заход — заякорим «сервер сейчас»
+      // первый заход — корректно заякорим
       if (_anchorPerfNow === 0){
         _rawFbOffsetMs   = newOff;
         _httpOffsetMs    = 0;
-        _stableOffsetMs  = newOff;           // стартовая оценка
-        _anchorServerNow = Date.now() + _stableOffsetMs;
+        _stableOffsetMs  = newOff;
+
+        _anchorLocalMs   = Date.now();
+        _anchorOffset0   = _stableOffsetMs;
         _anchorPerfNow   = performance.now();
+
+        _anchorServerNow = _anchorLocalMs + _anchorOffset0;
         return;
       }
 
@@ -114,7 +122,7 @@
       _rawFbOffsetMs = newOff;
       if (Math.abs(delta) <= OFFSET_JITTER) return;
 
-      // плавно «подтягиваемся» к новой цели (без ступеньки)
+      // плавно тянем к новой цели (смеси HTTP/Firebase)
       const startPerf = performance.now();
       const startVal  = _stableOffsetMs;
       const targetVal = _blendOffsets(_httpOffsetMs, _rawFbOffsetMs);
@@ -156,8 +164,12 @@
         // если ещё не якорились — якоримся от HTTP
         if (_anchorPerfNow === 0){
           _stableOffsetMs  = _httpOffsetMs;
-          _anchorServerNow = Date.now() + _stableOffsetMs;
+
+          _anchorLocalMs   = Date.now();
+          _anchorOffset0   = _stableOffsetMs;
           _anchorPerfNow   = performance.now();
+
+          _anchorServerNow = _anchorLocalMs + _anchorOffset0;
         } else {
           // мягко сведёмся к смеси HTTP/Firebase
           const targetVal = _blendOffsets(_httpOffsetMs, _rawFbOffsetMs);
@@ -179,13 +191,17 @@
     poll();
   })();
 
-  // 3) Текущее «серверное» время без скачков
+  // 3) Текущее «серверное» время без скачков и без межклиентского сдвига
   Data.serverNow = function(){
     if (_anchorPerfNow === 0){
       return Date.now(); // самый первый кадр до прихода источников
     }
     const elapsed = performance.now() - _anchorPerfNow;
-    return _anchorServerNow + elapsed + (_stableOffsetMs - _rawFbOffsetMs);
+
+    // serverNow = (локальное время в момент якоря)
+    //           + прошедшее монотонное время
+    //           + (текущее оценённое смещение - смещение на момент якоря)
+    return _anchorLocalMs + elapsed + (_stableOffsetMs - _anchorOffset0);
   };
 
   // Экспорт
