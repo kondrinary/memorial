@@ -166,16 +166,18 @@ Data.announceAnchor = async function(k, beat, idx){
   }catch(e){ console.warn('[Data.announceAnchor]', e); }
 };
 
-Data.getLatestAnchor = async function(kNow){
+Data.getLatestAnchor = async function(nowBeat){
   if (!ready && !Data.init()) return null;
   try{
-    const snap = await anchorsRef.orderByChild('k').endAt(kNow).limitToLast(1).once('value');
+    // берём ровно тот якорь, чей beat уже наступил (<= nowBeat)
+    const snap = await anchorsRef.orderByChild('beat').endAt(nowBeat).limitToLast(1).once('value');
     const val = snap.val();
     if (!val) return null;
     const key = Object.keys(val)[0];
     return val[key]; // { k, beat, idx, ts }
   }catch(e){ console.warn('[Data.getLatestAnchor]', e); return null; }
 };
+
 
 
 

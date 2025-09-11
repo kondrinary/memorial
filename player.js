@@ -115,8 +115,8 @@ try {
 
 // докрутка offset по последнему якорю индекса
 {
-  const { k: kNow } = Data.currentWindowInfo();
-  const anchor = await Data.getLatestAnchor(kNow);
+ const nowBeat2 = Math.floor((Data.serverNow() + JOIN_GUARD_MS - SYNC_EPOCH_MS) / GRID_MS);
+const anchor   = await Data.getLatestAnchor(nowBeat2);
   if (anchor){
     const N = N_active || TL_active.length || 1;
     const predIdx = ((anchor.beat + idxOffset) % N + N) % N;
@@ -155,8 +155,8 @@ try {
         const nowBeat = Math.floor((Data.serverNow() + JOIN_GUARD_MS - SYNC_EPOCH_MS) / GRID_MS);
         const { off } = computeOffsetFromChangeLog(ch, nowBeat);
         if (Number.isFinite(off)) idxOffset = off;
-      const { k: kNow } = Data.currentWindowInfo();
-      return Data.getLatestAnchor(kNow);
+      const nowBeat2 = Math.floor((Data.serverNow() + JOIN_GUARD_MS - SYNC_EPOCH_MS) / GRID_MS);
+return Data.getLatestAnchor(nowBeat2);
         }).then(anchor=>{
         if (anchor){
           const N = N_active || TL_active.length || 1;
