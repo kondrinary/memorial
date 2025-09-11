@@ -1,6 +1,12 @@
 // config.js — глобальные настройки проекта
 window.AppConfig = {
 
+  AUDIO: {
+    BUFFER_SEC: 0.12,
+    CONTEXT: { latencyHint:"playback", lookAheadSec:0.20, updateIntervalSec:0.03 }
+  },
+
+
   CLOCK: {
     USE_FIREBASE_OFFSET: true,         // .info/serverTimeOffset
     USE_HTTP_TIME: true,               // HTTP-UTC (worldtimeapi) как второй источник
@@ -12,7 +18,7 @@ window.AppConfig = {
 
   // РОВНАЯ СЕТКА (индекс только из времени)
   SYNC: {
-    GRID_MS: 700                       // длина шага сетки (подбери при желании)
+    GRID_MS: 1000                       // длина шага сетки (подбери при желании)
   },
 
   // ОКНО АКТИВАЦИИ НОВЫХ ЗАПИСЕЙ (чтобы append был синхронный)

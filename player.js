@@ -74,7 +74,10 @@
     if (!node) return;
 
     const lenSec   = (DUR.noteLen || 0.35) * (SPEED || 1);
-    const delaySec = Math.max(0, (whenMs - Data.serverNow()) / 1000);
+    
+    const bufferSec = (AppConfig?.AUDIO?.BUFFER_SEC ?? 0);
+    const delaySec  = Math.max(0, (whenMs - Data.serverNow()) / 1000) + bufferSec;
+
     const whenAbs  = Tone.now() + (isCatchUp ? Math.max(0.01, delaySec) : delaySec);
     if (window.Synth?.trigger){
       Synth.trigger(node.freq, lenSec, 0.8, whenAbs);
