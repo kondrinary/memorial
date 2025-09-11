@@ -1,5 +1,5 @@
 // player.js — сетка + anti-miss + rotation + журнал смен (deterministic boot)
-// ВЕРСИЯ БЕЗ ЯКОРЕЙ (как в старой стабильной)
+// ПЕРЕКЛЮЧЕНИЕ СТРОГО НА ГРАНИЦЕ ОКНА (как в старой стабильной)
 (function(){
   const { SYNC_EPOCH_MS, SPEED, DUR } = window.AppConfig;
   const GRID_MS = (window.AppConfig?.SYNC?.GRID_MS) || 700;
@@ -39,8 +39,11 @@
     lastSpan = span;
   }
 
-  // журнал: первая «грид-граница СТРОГО после t»
-  const firstBeatAfter = (t)=> Math.floor((t - SYNC_EPOCH_MS) / GRID_MS) + 1;
+  // === БЫЛО: первая граница ПОСЛЕ t → это и давало окно расхождения
+  // const firstBeatAfter = (t)=> Math.floor((t - SYNC_EPOCH_MS) / GRID_MS) + 1;
+
+  // === СТАЛО: точная граница окна — переключаемся РОВНО в её момент
+  const beatAtWindowStart = (t)=> Math.floor((t - SYNC_EPOCH_MS) / GRID_MS);
 
   // offset из журнала [{k,beat,n}, ...] (по возрастанию k)
   // ВАЖНО: будущие смены (b > nowBeat) игнорируем до их наступления.
@@ -79,7 +82,7 @@
 
     const lenSec   = (DUR.noteLen || 0.35) * (SPEED || 1);
 
-    // Компенсация аудио-задержки устройства (устраняет «пол-ноты/ноту» между машинами)
+    // Компенсация аудио-задержки устройства
     const bufferSec = (AppConfig?.AUDIO?.BUFFER_SEC ?? 0);
     const ctx    = (Tone?.context?._context) || Tone?.context || window.audioCtx;
     const baseL  = ((ctx?.baseLatency)||0) + ((ctx?.outputLatency)||0); // секунды
@@ -104,7 +107,7 @@
     TL_active = TL0;
     N_active  = TL_active.length | 0;
 
-    // детерминированно восстановим offset из журнала (как в старой стабильной)
+    // детерминированно восстановим offset из журнала
     idxOffset = 0;
     try {
       const changes = await Data.getChangeLogOnce();
@@ -130,7 +133,7 @@
     lastIdx = -1;
   };
 
-  // изменение TL (append/rebuild) — строго на границе окна + запись в журнал (как в старой версии)
+  // изменение TL (append/rebuild) — строго на ГРАНИЦЕ ОКНА + запись в журнал
   Player.onTimelineChanged = function(){
     const TL_new = (window.Visual?.getTimelineSnapshot)
       ? Visual.getTimelineSnapshot()
@@ -158,9 +161,9 @@
       return;
     }
 
-    // Привязка переключения к НАЧАЛУ текущего окна (одинаково у всех)
+    // === КЛЮЧЕВАЯ ПРАВКА: переключаемся РОВНО на начале окна (windowStart)
     const { windowStart, k } = Data.currentWindowInfo();
-    const targetBeat = firstBeatAfter(windowStart);
+    const targetBeat = beatAtWindowStart(windowStart); // раньше было firstBeatAfter(windowStart)
     switchAtMs = SYNC_EPOCH_MS + targetBeat * GRID_MS;
 
     // Ротация, чтобы не было «отката» индекса при смене длины
