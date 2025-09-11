@@ -1,4 +1,5 @@
 // data.js — RTDB + «серверные» часы + окно 1с + журнал смен TL
+// ВЕРСИЯ БЕЗ ЯКОРЕЙ (как в старой стабильной)
 (function(){
   const Data = {};
   let ready = false;
@@ -40,7 +41,7 @@
       const digits = (bDigits + dDigits).split('').map(n => +n);
       await datesRef.push({
         birth: bDigits,
-        death: dDigits,
+        death:  dDigits,
         digits,
         ts: firebase.database.ServerValue.TIMESTAMP  // важно для окна
       });
@@ -127,7 +128,7 @@
     tick();
   }
 
-  // ----- change log (идемпотентно) -----
+  // ----- change log (идемпотентно, ключ — окно k) -----
   Data.announceChange = async function(k, beat, n){
     if (!ready && !Data.init()) return;
     try {
@@ -150,7 +151,7 @@
     }
   };
 
-  // ----- «серверные» часы: .info + HTTP-UTC с плавной подстройкой -----
+  // ----- «серверные» часы: .info + (опц.) HTTP-UTC с плавной подстройкой -----
   let offsetRef = null;
   let _anchorPerfNow = 0, _anchorLocalMs = 0, _anchorOffset0 = 0;
   let _rawFbOffsetMs = 0, _httpOffsetMs = 0, _stableOffsetMs = 0;

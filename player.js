@@ -1,4 +1,5 @@
 // player.js — сетка + anti-miss + rotation + журнал смен (deterministic boot)
+// ВЕРСИЯ БЕЗ ЯКОРЕЙ (как в старой стабильной)
 (function(){
   const { SYNC_EPOCH_MS, SPEED, DUR } = window.AppConfig;
   const GRID_MS = (window.AppConfig?.SYNC?.GRID_MS) || 700;
@@ -17,7 +18,7 @@
 
   // Индексный поворот
   let idxOffset        = 0;   // для активного TL
-  let pendingIdxOffset = 0;   // прим. при переключении
+  let pendingIdxOffset = 0;   // применяется при переключении
 
   // Визуал
   let lastIdx  = -1;
@@ -25,8 +26,9 @@
 
   // Планировщик
   const LOOKAHEAD_MS      = Math.min(900, Math.floor(GRID_MS * 0.85));
-  const SCHED_TICK_MS     = 30;
-  const MISS_TOL_MS       = 150;
+  const SCHED_TICK_MS     = 20;     // чаще тик — меньше шанс промаха
+  const MISS_TOL_MS       = 260;    // окно догонки
+  const JOIN_GUARD_MS     = 20;     // анти-пограничный сдвиг при вычислении nowBeat
   let   lastScheduledBeat = null;
 
   const mod = (a,n)=> ((a % n) + n) % n;
@@ -41,11 +43,13 @@
   const firstBeatAfter = (t)=> Math.floor((t - SYNC_EPOCH_MS) / GRID_MS) + 1;
 
   // offset из журнала [{k,beat,n}, ...] (по возрастанию k)
-  function computeOffsetFromChangeLog(changes){
+  // ВАЖНО: будущие смены (b > nowBeat) игнорируем до их наступления.
+  function computeOffsetFromChangeLog(changes, nowBeat){
     let off = 0, N = 0;
     for (const ch of (changes || [])){
       const b = +ch.beat|0, n = +ch.n|0;
       if (!n) continue;
+      if (nowBeat != null && b > nowBeat) break; // будущая смена ещё не действует
       if (N === 0){ N = n; off = 0; continue; }
       const offNew = mod( mod(b + off, N) - mod(b, n), n );
       N = n; off = offNew;
@@ -74,8 +78,16 @@
     if (!node) return;
 
     const lenSec   = (DUR.noteLen || 0.35) * (SPEED || 1);
-    const delaySec = Math.max(0, (whenMs - Data.serverNow()) / 1000);
-    const whenAbs  = Tone.now() + (isCatchUp ? Math.max(0.01, delaySec) : delaySec);
+
+    // Компенсация аудио-задержки устройства (устраняет «пол-ноты/ноту» между машинами)
+    const bufferSec = (AppConfig?.AUDIO?.BUFFER_SEC ?? 0);
+    const ctx    = (Tone?.context?._context) || Tone?.context || window.audioCtx;
+    const baseL  = ((ctx?.baseLatency)||0) + ((ctx?.outputLatency)||0); // секунды
+    const relSec = Math.max(0, (whenMs - Data.serverNow()) / 1000);
+    const whenAbs  = Tone.now()
+      + (isCatchUp ? Math.max(0.01, relSec) : relSec)
+      + Math.max(0, bufferSec - baseL);
+
     if (window.Synth?.trigger){
       Synth.trigger(node.freq, lenSec, 0.8, whenAbs);
     }
@@ -92,13 +104,14 @@
     TL_active = TL0;
     N_active  = TL_active.length | 0;
 
-    // детерминированно восстановим offset из журнала
+    // детерминированно восстановим offset из журнала (как в старой стабильной)
     idxOffset = 0;
-    try{
+    try {
       const changes = await Data.getChangeLogOnce();
-      const { off } = computeOffsetFromChangeLog(changes);
+      const nowBeat = Math.floor((Data.serverNow() + JOIN_GUARD_MS - SYNC_EPOCH_MS) / GRID_MS);
+      const { off } = computeOffsetFromChangeLog(changes, nowBeat);
       if (Number.isFinite(off)) idxOffset = off;
-    } catch(_){}
+    } catch(_) {}
 
     TL_pending = null; N_pending = 0; switchAtMs = null;
     pendingIdxOffset = 0;
@@ -117,7 +130,7 @@
     lastIdx = -1;
   };
 
-  // изменение TL (append/rebuild) — на детерминированной границе, и логируем её
+  // изменение TL (append/rebuild) — строго на границе окна + запись в журнал (как в старой версии)
   Player.onTimelineChanged = function(){
     const TL_new = (window.Visual?.getTimelineSnapshot)
       ? Visual.getTimelineSnapshot()
@@ -128,9 +141,10 @@
       idxOffset = 0;
       try{
         Data.getChangeLogOnce().then(ch=>{
-          const { off } = computeOffsetFromChangeLog(ch);
+          const nowBeat = Math.floor((Data.serverNow() + JOIN_GUARD_MS - SYNC_EPOCH_MS) / GRID_MS);
+          const { off } = computeOffsetFromChangeLog(ch, nowBeat);
           if (Number.isFinite(off)) idxOffset = off;
-        });
+        }).catch(()=>{});
       }catch(_){}
       TL_pending = null; N_pending = 0; switchAtMs = null; pendingIdxOffset = 0;
       lastIdx = -1; lastSpan = null; lastScheduledBeat = null;
@@ -144,19 +158,19 @@
       return;
     }
 
-    // привяжем переключение к НАЧАЛУ текущего окна (одинаково у всех)
+    // Привязка переключения к НАЧАЛУ текущего окна (одинаково у всех)
     const { windowStart, k } = Data.currentWindowInfo();
     const targetBeat = firstBeatAfter(windowStart);
     switchAtMs = SYNC_EPOCH_MS + targetBeat * GRID_MS;
 
-    // ротация, чтобы не было «отката»
+    // Ротация, чтобы не было «отката» индекса при смене длины
     if (N_active > 0 && N_pending > 0){
       pendingIdxOffset = computePendingRotationForContinuity(targetBeat);
     } else {
       pendingIdxOffset = 0;
     }
 
-    // логируем смену (один раз на окно k)
+    // Журнал смен (один раз на окно k)
     Data.announceChange(k, targetBeat, N_pending).catch(()=>{});
 
     lastScheduledBeat = null;
@@ -170,7 +184,7 @@
     const nowSrv  = Data.serverNow();
     const curBeat = Math.floor((nowSrv - SYNC_EPOCH_MS) / GRID_MS);
 
-    // переключение на заранее вычисленной границе
+    // Переключение на заранее вычисленной границе
     if (switchAtMs && nowSrv >= switchAtMs && TL_pending){
       TL_active  = TL_pending;
       N_active   = N_pending;
@@ -187,7 +201,7 @@
       return;
     }
 
-    // подсветка
+    // Подсветка (визуальная синхра)
     const idxNow = mod(curBeat + idxOffset, N_active);
     if (idxNow !== lastIdx){
       const cur = TL_active[idxNow];
@@ -199,10 +213,12 @@
       lastIdx = idxNow;
     }
 
-    // планирование на следующий beat (или catch-up)
+    // Планирование на следующий beat (или catch-up)
     const nextBeat    = curBeat + 1;
     const boundaryAbs = SYNC_EPOCH_MS + nextBeat * GRID_MS;
     const dtMs        = boundaryAbs - nowSrv;
+
+    // Проверка: на этой границе не произойдёт ли switch
     const switchIsNow = !!(switchAtMs && Math.abs(boundaryAbs - switchAtMs) <= 8 && TL_pending);
 
     if (dtMs > 0 && dtMs <= LOOKAHEAD_MS && lastScheduledBeat !== nextBeat){
