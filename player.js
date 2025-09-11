@@ -25,8 +25,9 @@
 
   // Планировщик
   const LOOKAHEAD_MS      = Math.min(900, Math.floor(GRID_MS * 0.85));
-  const SCHED_TICK_MS     = 30;
-  const MISS_TOL_MS       = 150;
+  const SCHED_TICK_MS     = 20;     // чаще тик — меньше шанс промаха
+  const MISS_TOL_MS       = 280;    // даём до 0.28с на «досchedule» первого удара
+  const JOIN_GUARD_MS     = 20;     // анти-пограничный сдвиг при вычислении nowBeat
   let   lastScheduledBeat = null;
 
   const mod = (a,n)=> ((a % n) + n) % n;
@@ -100,7 +101,7 @@
 idxOffset = 0;
 try {
   const changes = await Data.getChangeLogOnce();
-  const nowBeat = Math.floor((Data.serverNow() - SYNC_EPOCH_MS) / GRID_MS);
+  const nowBeat = Math.floor((Data.serverNow() + JOIN_GUARD_MS - SYNC_EPOCH_MS) / GRID_MS);
   const { off } = computeOffsetFromChangeLog(changes, nowBeat);
   if (Number.isFinite(off)) idxOffset = off;
 } catch(_) {}
@@ -133,7 +134,7 @@ try {
       idxOffset = 0;
       try{
        Data.getChangeLogOnce().then(ch=>{
-        const nowBeat = Math.floor((Data.serverNow() - SYNC_EPOCH_MS) / GRID_MS);
+        const nowBeat = Math.floor((Data.serverNow() + JOIN_GUARD_MS - SYNC_EPOCH_MS) / GRID_MS);
         const { off } = computeOffsetFromChangeLog(ch, nowBeat);
         if (Number.isFinite(off)) idxOffset = off;
         }).catch(()=>{});
