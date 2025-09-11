@@ -1,5 +1,5 @@
 // data.js — RTDB + «серверные» часы + окно 1с + журнал смен TL
-// БЕЗ ЯКОРЕЙ
+// БЕЗ ЯКОРЕЙ. Исправлен маппинг ts (никаких ts:0).
 (function(){
   const Data = {};
   let ready = false;
@@ -43,7 +43,7 @@
         birth: bDigits,
         death: dDigits,
         digits,
-        ts: firebase.database.ServerValue.TIMESTAMP
+        ts: firebase.database.ServerValue.TIMESTAMP // сервер проставит число
       });
       return true;
     } catch (e){
@@ -68,13 +68,21 @@
 
       _rawList = Object.entries(val)
         .sort(([ka],[kb]) => ka.localeCompare(kb))
-        .map(([id, obj]) => ({
-          id,
-          birth: obj.birth,
-          death: obj.death,
-          digits: obj.digits,
-          ts: typeof obj.ts === 'number' ? obj.ts : 0
-        }));
+        .map(([id, obj]) => {
+          const rawTs = obj.ts;
+          // НЕ допускаем попадания «свежей» записи в текущее окно,
+          // пока сервер не проставил реальный числовой ts.
+          const ts = (typeof rawTs === 'number')
+            ? rawTs
+            : Number.MAX_SAFE_INTEGER; // активируется только со следующего окна
+          return {
+            id,
+            birth: obj.birth,
+            death: obj.death,
+            digits: obj.digits,
+            ts
+          };
+        });
 
       _emitIfChanged(handler);
     }, (err)=>{
@@ -151,7 +159,7 @@
     }
   };
 
-  // ----- «серверные» часы (.info + опц. HTTP-UTC с плавной подстройкой) -----
+  // ----- «серверные» часы: .info + (опц.) HTTP-UTC с плавной подстройкой -----
   let offsetRef = null;
   let _anchorPerfNow = 0, _anchorLocalMs = 0, _anchorOffset0 = 0;
   let _rawFbOffsetMs = 0, _httpOffsetMs = 0, _stableOffsetMs = 0;
