@@ -41,11 +41,12 @@
   const firstBeatAfter = (t)=> Math.floor((t - SYNC_EPOCH_MS) / GRID_MS) + 1;
 
   // offset из журнала [{k,beat,n}, ...] (по возрастанию k)
-  function computeOffsetFromChangeLog(changes){
+  function computeOffsetFromChangeLog(changes, nowBeat){
     let off = 0, N = 0;
     for (const ch of (changes || [])){
       const b = +ch.beat|0, n = +ch.n|0;
       if (!n) continue;
+      if (nowBeat != null && b > nowBeat) break; // будущая смена ещё не действует
       if (N === 0){ N = n; off = 0; continue; }
       const offNew = mod( mod(b + off, N) - mod(b, n), n );
       N = n; off = offNew;
@@ -96,12 +97,13 @@
     N_active  = TL_active.length | 0;
 
     // детерминированно восстановим offset из журнала
-    idxOffset = 0;
-    try{
-      const changes = await Data.getChangeLogOnce();
-      const { off } = computeOffsetFromChangeLog(changes);
-      if (Number.isFinite(off)) idxOffset = off;
-    } catch(_){}
+idxOffset = 0;
+try {
+  const changes = await Data.getChangeLogOnce();
+  const nowBeat = Math.floor((Data.serverNow() - SYNC_EPOCH_MS) / GRID_MS);
+  const { off } = computeOffsetFromChangeLog(changes, nowBeat);
+  if (Number.isFinite(off)) idxOffset = off;
+} catch(_) {}
 
     TL_pending = null; N_pending = 0; switchAtMs = null;
     pendingIdxOffset = 0;
@@ -130,10 +132,11 @@
       TL_active = TL_new; N_active = TL_active.length | 0;
       idxOffset = 0;
       try{
-        Data.getChangeLogOnce().then(ch=>{
-          const { off } = computeOffsetFromChangeLog(ch);
-          if (Number.isFinite(off)) idxOffset = off;
-        });
+       Data.getChangeLogOnce().then(ch=>{
+        const nowBeat = Math.floor((Data.serverNow() - SYNC_EPOCH_MS) / GRID_MS);
+        const { off } = computeOffsetFromChangeLog(ch, nowBeat);
+        if (Number.isFinite(off)) idxOffset = off;
+        }).catch(()=>{});
       }catch(_){}
       TL_pending = null; N_pending = 0; switchAtMs = null; pendingIdxOffset = 0;
       lastIdx = -1; lastSpan = null; lastScheduledBeat = null;
