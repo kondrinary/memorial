@@ -1,136 +1,77 @@
-// visual.js — поток дат, синхронизированный с Player (без автопрокрутки)
-(function(){
+// visual.js — ДЕЛАЕМ ОДИНАКОВЫЙ ПОРЯДОК У ВСЕХ КЛИЕНТОВ
+// 1) Всегда строим таймлайн ЦЕЛИКОМ из активного списка (без append)
+// 2) Жёстко сортируем: (ts ASC, id ASC)
+// 3) Рендерим заново, чтобы Player получил одинаковую последовательность
+
+(function () {
   const Visual = {};
+  const $root = document.getElementById('timeline') || document.body;
+  const DEBUG = false;
+
+  // Текущий плоский TL: [{id, digit, freq, ts, span}]
   Visual.timeline = [];
-  Visual.knownIds = new Set();
 
-  let stream = null; // контейнер для текста справа (#stream)
-
-  // === перевод цифры 0..9 -> частота ===
-  function digitToFreq(d){
-    const { FREQ_MIN, FREQ_MAX, PITCH_MODE } = AppConfig;
-    if (PITCH_MODE === 'geometric') {
-      const ratio = FREQ_MAX / FREQ_MIN;
-      return FREQ_MIN * Math.pow(ratio, d / 9);
-    }
-    const step = (FREQ_MAX - FREQ_MIN) / 9;
-    return FREQ_MIN + d * step;
+  // Простая мапа цифры в частоту (стабильно и детерминированно)
+  function toFreq(d) {
+    const base = 110;            // A2
+    const step = Math.pow(2, 1/12);
+    return base * Math.pow(step, (d|0));
   }
 
-  // один элемент (пара дат) -> фрагмент и массив цифр
-  function renderPairToFragment(item){
-    const bStr = item.birth.slice(0,2)+'.'+item.birth.slice(2,4)+'.'+item.birth.slice(4);
-    const dStr = item.death.slice(0,2)+'.'+item.death.slice(2,4)+'.'+item.death.slice(4);
-    const text = `${bStr}.${dStr}.`;
-
-    const frag  = document.createDocumentFragment();
-    const spans = [];
-    for (const ch of text){
-      const s = document.createElement('span');
-      s.textContent = ch;
-      if (/\d/.test(ch)) s.classList.add('digit');
-      frag.appendChild(s);
-      spans.push(s);
-    }
-    const digitsOnly = (item.birth + item.death).split('').map(Number);
-    return { frag, spans, text, digitsOnly };
+  // Жёсткая стабсортировка: (ts ASC, id ASC)
+  function sortStable(list) {
+    return list.slice().sort((a, b) => {
+      const ta = (a.ts || 0), tb = (b.ts || 0);
+      if (ta !== tb) return ta - tb;
+      const ia = String(a.id || ''), ib = String(b.id || '');
+      return ia < ib ? -1 : ia > ib ? 1 : 0;
+    });
   }
 
-  // Полная отстройка (первый снимок базы)
-  Visual.build = function(list){
-    if (!stream) stream = document.getElementById('stream');
-    if (!stream) return;
+  // Полная перерисовка DOM — один источник истины
+  function renderTimeline(list) {
+    while ($root.firstChild) $root.removeChild($root.firstChild);
+    const frag = document.createDocumentFragment();
+    for (const item of list) {
+      const span = document.createElement('span');
+      span.className = 'digit';
+      span.textContent = String(item.digit);
+      item.span = span;                 // привязываем DOM-узел к элементу TL
+      frag.appendChild(span);
+    }
+    $root.appendChild(frag);
+  }
 
-    stream.innerHTML = '';
-    Visual.timeline = [];
-    Visual.knownIds.clear();
-
-    // прямой порядок: старые → новые
-    list.forEach(item=>{
-      Visual.knownIds.add(item.id);
-
-      const { frag, spans, text, digitsOnly } = renderPairToFragment(item);
-      stream.appendChild(frag); // визуально — в конец
-
-      // в таймлайн — только цифры в том же порядке
-      let di = 0;
-      for (let i=0;i<text.length;i++){
-        const ch = text[i];
-        if (/\d/.test(ch)){
-          const d = digitsOnly[di];
-          const isLast = (di === digitsOnly.length - 1); // конец пары
-          Visual.timeline.push({
-            digit: d,
-            freq: digitToFreq(d),
-            span: spans[i],
-            pairEnd: isLast
-          });
-          di++;
-        }
+  // Главная точка: строим плоский TL из активных записей Data
+  Visual.build = function (activeList) {
+    // activeList: [{id, digits:[...], ts}, ...]
+    const flat = [];
+    for (const rec of activeList) {
+      const digits = rec.digits || [];
+      for (let i = 0; i < digits.length; i++) {
+        const d = digits[i];
+        flat.push({
+          // Делаем уникальный и детерминированный локальный id
+          id: rec.id + ':' + i,
+          digit: d,
+          freq: toFreq(d),
+          ts: rec.ts
+        });
       }
-    });
-
-    if (window.Player && typeof Player.onTimelineChanged === 'function') {
-      Player.onTimelineChanged();
     }
+
+    const ordered = sortStable(flat);
+    Visual.timeline = ordered;
+    renderTimeline(ordered);
+
+    if (DEBUG) console.log('[Visual.build] size=', ordered.length, ordered.slice(0, 5));
   };
 
-  // Дозагрузка новых записей (последующие снапшоты)
-  Visual.append = function(list){
-    if (!stream) stream = document.getElementById('stream');
-    if (!stream) return;
-
-    let changed = false;
-
-    list.forEach(item=>{
-      if (Visual.knownIds.has(item.id)) return;
-      Visual.knownIds.add(item.id);
-      changed = true;
-
-      const { frag, spans, text, digitsOnly } = renderPairToFragment(item);
-      stream.appendChild(frag);
-
-      let di = 0;
-      for (let i=0;i<text.length;i++){
-        const ch = text[i];
-        if (/\d/.test(ch)){
-          const d = digitsOnly[di];
-          const isLast = (di === digitsOnly.length - 1);
-          Visual.timeline.push({
-            digit: d,
-            freq: digitToFreq(d),
-            span: spans[i],
-            pairEnd: isLast
-          });
-          di++;
-        }
-      }
-    });
-
-    if (changed && window.Player && typeof Player.onTimelineChanged === 'function') {
-      Player.onTimelineChanged();
-    }
-  };
-
-  let _lastActiveIndex = -1;
-  Visual.setActiveIndex = function(idx){
-    if (!Visual.timeline || !Visual.timeline.length) return;
-    if (_lastActiveIndex === idx) return;
-
-    if (_lastActiveIndex >= 0){
-      const prev = Visual.timeline[_lastActiveIndex];
-      if (prev && prev.span) prev.span.classList.remove('active');
-    }
-    const cur = Visual.timeline[idx];
-    if (cur && cur.span) cur.span.classList.add('active');
-
-    _lastActiveIndex = idx;
-  };
-
-  // Вернёт «снимок» текущего таймлайна (чтобы Player держал активную копию)
-  Visual.getTimelineSnapshot = function(){
-    const tl = Visual.timeline || [];
-    return tl.map(x => ({ digit:x.digit, freq:x.freq, span:x.span, pairEnd:x.pairEnd }));
+  // Снимок без мутации (Player читает отсюда)
+  Visual.getTimelineSnapshot = function () {
+    return Visual.timeline.map(x => ({
+      id: x.id, digit: x.digit, freq: x.freq, ts: x.ts, span: x.span
+    }));
   };
 
   window.Visual = Visual;
