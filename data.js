@@ -5,8 +5,6 @@
   let db = null;
   let datesRef = null;
   let changesRef = null;
-  let anchorsRef = null;
-
 
   // ----- init -----
   Data.init = function(){
@@ -24,7 +22,6 @@
       db = firebase.database();
 
       const path = (window.AppConfig && AppConfig.DB_PATH) ? AppConfig.DB_PATH : 'dates';
-      anchorsRef = db.ref('control/anchors');
       datesRef   = db.ref(path);
       changesRef = db.ref('control/changes'); // журнал смен (ключ — окно k)
 
@@ -152,35 +149,6 @@
       return [];
     }
   };
-
-
-// ----- anchor index (якорь индекса на окно k) -----
-Data.announceAnchor = async function(k, beat, idx){
-  if (!ready && !Data.init()) return;
-  try{
-    const ref = anchorsRef.child(String(k));
-    await ref.transaction(cur => cur || {
-      k, beat, idx,
-      ts: firebase.database.ServerValue.TIMESTAMP
-    });
-  }catch(e){ console.warn('[Data.announceAnchor]', e); }
-};
-
-Data.getLatestAnchor = async function(nowBeat){
-  if (!ready && !Data.init()) return null;
-  try{
-    // берём ровно тот якорь, чей beat уже наступил (<= nowBeat)
-    const snap = await anchorsRef.orderByChild('beat').endAt(nowBeat).limitToLast(1).once('value');
-    const val = snap.val();
-    if (!val) return null;
-    const key = Object.keys(val)[0];
-    return val[key]; // { k, beat, idx, ts }
-  }catch(e){ console.warn('[Data.getLatestAnchor]', e); return null; }
-};
-
-
-
-
 
   // ----- «серверные» часы: .info + HTTP-UTC с плавной подстройкой -----
   let offsetRef = null;
