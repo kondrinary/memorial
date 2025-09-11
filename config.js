@@ -36,15 +36,10 @@ window.AppConfig = {
   // Синхронизация
   SYNC_ENABLED: true,
   SYNC_EPOCH_MS: Date.UTC(2025,0,1,0,0,0), // опорное UTC-время
-  SYNC_SEED: 123456789,
-  RANDOM_MODE: 'seeded',
 
   // Длительности/FX
   DUR: {
     noteLen: 0.50, // сек
-    randMin: 600,  // мс (не влияет на сетку)
-    randMax: 800,
-    pairGap: 1000
   },
 
   // Маппинг 0..9 → частоты

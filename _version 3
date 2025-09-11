@@ -1,0 +1,12 @@
+Версия: 3
+
+Изменения
+
+player.js 
+computeOffsetFromChangeLog теперь принимает nowBeat и игнорирует будущие смены (if (nowBeat != null && b > nowBeat) break;).
+в Player.start() перед расчётом оффсета вычисляем nowBeat и вызываем computeOffsetFromChangeLog(changes, nowBeat) (убраны старые дубли и вызов без nowBeat).
+в Player.onTimelineChanged() (ветка if (!running)) заменён вызов на Data.getChangeLogOnce().then(ch => { const nowBeat = …; const {off}=computeOffsetFromChangeLog(ch, nowBeat); … });.
+
+
+
+

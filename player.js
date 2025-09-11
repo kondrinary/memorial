@@ -25,8 +25,8 @@
 
   // Планировщик
   const LOOKAHEAD_MS      = Math.min(900, Math.floor(GRID_MS * 0.85));
-  const SCHED_TICK_MS     = 20;     // чаще тик — меньше шанс промаха
-  const MISS_TOL_MS       = 280;    // даём до 0.28с на «досchedule» первого удара
+  const SCHED_TICK_MS     = 30;     // чаще тик — меньше шанс промаха
+  const MISS_TOL_MS       = 150;    // даём до 0.28с на «досchedule» первого удара
   const JOIN_GUARD_MS     = 20;     // анти-пограничный сдвиг при вычислении nowBeat
   let   lastScheduledBeat = null;
 
@@ -77,10 +77,16 @@
 
     const lenSec   = (DUR.noteLen || 0.35) * (SPEED || 1);
     
-    const bufferSec = (AppConfig?.AUDIO?.BUFFER_SEC ?? 0);
-    const delaySec  = Math.max(0, (whenMs - Data.serverNow()) / 1000) + bufferSec;
+ const bufferSec = (AppConfig?.AUDIO?.BUFFER_SEC ?? 0);
 
-    const whenAbs  = Tone.now() + (isCatchUp ? Math.max(0.01, delaySec) : delaySec);
+// учёт реальной аудиозадержки устройства
+const ctx    = (Tone?.context?._context) || Tone?.context || window.audioCtx;
+const baseL  = ((ctx?.baseLatency)||0) + ((ctx?.outputLatency)||0); // секунды
+const relSec = Math.max(0, (whenMs - Data.serverNow()) / 1000);
+const whenAbs  = Tone.now()
+  + (isCatchUp ? Math.max(0.01, relSec) : relSec)
+  + Math.max(0, bufferSec - baseL);
+
     if (window.Synth?.trigger){
       Synth.trigger(node.freq, lenSec, 0.8, whenAbs);
     }
@@ -105,6 +111,18 @@ try {
   const { off } = computeOffsetFromChangeLog(changes, nowBeat);
   if (Number.isFinite(off)) idxOffset = off;
 } catch(_) {}
+
+
+// докрутка offset по последнему якорю индекса
+{
+  const nowBeat2 = Math.floor((Data.serverNow() + JOIN_GUARD_MS - SYNC_EPOCH_MS) / GRID_MS);
+  const anchor   = await Data.getLatestAnchor(nowBeat2);
+  if (anchor){
+    const N = N_active || TL_active.length || 1;
+    const predIdx = ((anchor.beat + idxOffset) % N + N) % N;
+    idxOffset = ((idxOffset + (anchor.idx - predIdx)) % N + N) % N;
+  }
+}
 
     TL_pending = null; N_pending = 0; switchAtMs = null;
     pendingIdxOffset = 0;
@@ -133,11 +151,19 @@ try {
       TL_active = TL_new; N_active = TL_active.length | 0;
       idxOffset = 0;
       try{
-       Data.getChangeLogOnce().then(ch=>{
+        Data.getChangeLogOnce().then(ch=>{
         const nowBeat = Math.floor((Data.serverNow() + JOIN_GUARD_MS - SYNC_EPOCH_MS) / GRID_MS);
         const { off } = computeOffsetFromChangeLog(ch, nowBeat);
         if (Number.isFinite(off)) idxOffset = off;
-        }).catch(()=>{});
+        return Data.getLatestAnchor(nowBeat);
+        }).then(anchor=>{
+        if (anchor){
+          const N = N_active || TL_active.length || 1;
+          const predIdx = ((anchor.beat + idxOffset) % N + N) % N;
+          idxOffset = ((idxOffset + (anchor.idx - predIdx)) % N + N) % N;
+        }
+      }).catch(()=>{});
+
       }catch(_){}
       TL_pending = null; N_pending = 0; switchAtMs = null; pendingIdxOffset = 0;
       lastIdx = -1; lastSpan = null; lastScheduledBeat = null;
@@ -162,6 +188,13 @@ try {
     } else {
       pendingIdxOffset = 0;
     }
+
+
+    // заякорим индекс на момент switch (для новой TL)
+    if (N_pending > 0){
+    const idxAtSwitch = ((targetBeat + pendingIdxOffset) % N_pending + N_pending) % N_pending;
+    Data.announceAnchor(targetBeat, idxAtSwitch);
+   }
 
     // логируем смену (один раз на окно k)
     Data.announceChange(k, targetBeat, N_pending).catch(()=>{});
