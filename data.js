@@ -1,5 +1,5 @@
 // data.js — RTDB + «серверные» часы + окно 1с + журнал смен TL
-// Основано на старой стабильной версии. Добавлен безопасный маппинг ts.
+// Добавлен 2s лаг активации новых записей (ACTIVATION_HOLDOFF_MS).
 (function(){
   const Data = {};
   let ready = false;
@@ -40,8 +40,8 @@
     try {
       const digits = (bDigits + dDigits).split('').map(n => +n);
       await datesRef.push({
-        birth: bDigits,
-        death: dDigits,
+        birth:  bDigits,
+        death:  dDigits,
         digits,
         ts: firebase.database.ServerValue.TIMESTAMP  // сервер проставит число
       });
@@ -52,7 +52,7 @@
     }
   };
 
-  // ----- subscribe with 1s activation window -----
+  // ----- subscribe with activation window (1s windows + 2s holdoff) -----
   let _rawList = [];
   let _lastEmitIds = '';
   let _lastWindowId = null;
@@ -70,8 +70,7 @@
         .sort(([ka],[kb]) => ka.localeCompare(kb))
         .map(([id, obj]) => {
           const rawTs = obj.ts;
-          // Важно: запись без числового ts НЕ попадает в текущее окно
-          // (ждём реальный серверный таймстамп)
+          // ВАЖНО: пока сервер не проставил числовой ts, запись НЕ активируется
           const ts = (typeof rawTs === 'number') ? rawTs : Number.MAX_SAFE_INTEGER;
           return {
             id,
@@ -93,17 +92,20 @@
 
   function _windowInfo(nowMs){
     const { SYNC_EPOCH_MS } = AppConfig;
-    const { MS:WIN_MS, DELAY_MS } = AppConfig.WINDOW || { MS:1000, DELAY_MS:250 };
+    const { MS:WIN_MS, DELAY_MS, ACTIVATION_HOLDOFF_MS } = AppConfig.WINDOW || { MS:1000, DELAY_MS:250, ACTIVATION_HOLDOFF_MS:2000 };
     const t = nowMs - (DELAY_MS || 0);
     const k = Math.floor((t - SYNC_EPOCH_MS) / WIN_MS);
     const windowStart = SYNC_EPOCH_MS + k * WIN_MS;
-    return { k, windowStart, WIN_MS };
+    const holdoff = (typeof ACTIVATION_HOLDOFF_MS === 'number') ? ACTIVATION_HOLDOFF_MS : 2000;
+    return { k, windowStart, WIN_MS, holdoff };
   }
   Data.currentWindowInfo = function(){ return _windowInfo(Data.serverNow()); };
 
   function _filteredByWindow(raw){
-    const { windowStart } = _windowInfo(Data.serverNow());
-    return raw.filter(x => (x.ts || 0) <= windowStart);
+    const { windowStart, holdoff } = _windowInfo(Data.serverNow());
+    // Ключ: даём дополнительный лаг в 2s перед включением новой записи
+    const cutoff = windowStart - holdoff;
+    return raw.filter(x => (x.ts || 0) <= cutoff);
   }
 
   function _emitIfChanged(handler){
