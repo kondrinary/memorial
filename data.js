@@ -154,24 +154,29 @@
   };
 
 
-// ----- anchor index (якорь индекса на конкретном beat) -----
-Data.announceAnchor = async function(beat, idx){
+// ----- anchor index (якорь индекса на окно k) -----
+Data.announceAnchor = async function(k, beat, idx){
   if (!ready && !Data.init()) return;
   try{
-    await anchorsRef.child(String(beat)).set({ beat, idx, ts: Date.now() });
+    const ref = anchorsRef.child(String(k));
+    await ref.transaction(cur => cur || {
+      k, beat, idx,
+      ts: firebase.database.ServerValue.TIMESTAMP
+    });
   }catch(e){ console.warn('[Data.announceAnchor]', e); }
 };
 
-Data.getLatestAnchor = async function(nowBeat){
+Data.getLatestAnchor = async function(kNow){
   if (!ready && !Data.init()) return null;
   try{
-    const snap = await anchorsRef.orderByChild('beat').endAt(nowBeat).limitToLast(1).once('value');
+    const snap = await anchorsRef.orderByChild('k').endAt(kNow).limitToLast(1).once('value');
     const val = snap.val();
     if (!val) return null;
     const key = Object.keys(val)[0];
-    return val[key]; // { beat, idx, ts }
+    return val[key]; // { k, beat, idx, ts }
   }catch(e){ console.warn('[Data.getLatestAnchor]', e); return null; }
 };
+
 
 
 

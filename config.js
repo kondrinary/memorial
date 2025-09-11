@@ -7,14 +7,15 @@ window.AppConfig = {
   },
 
 
-  CLOCK: {
-    USE_FIREBASE_OFFSET: true,         // .info/serverTimeOffset
-    USE_HTTP_TIME: true,               // HTTP-UTC (worldtimeapi) как второй источник
-    HTTP_URL: 'https://worldtimeapi.org/api/timezone/Etc/UTC',
-    RESYNC_SEC: 60,                    // переоценка HTTP-UTC раз в минуту
-    SLEW_MS: 1500,                     // плавная подстройка offset без скачка
-    JITTER_MS: 8                       // игнорировать шум до ±8 мс
-  },
+CLOCK: {
+  USE_FIREBASE_OFFSET: true,
+  USE_HTTP_TIME: false,        
+  HTTP_URL: 'https://worldtimeapi.org/api/timezone/Etc/UTC',
+  RESYNC_SEC: 60,
+  SLEW_MS: 3000,               // было 1500 → делаем мягче
+  JITTER_MS: 12                // было 8 → чуть шире 
+},
+
 
   // РОВНАЯ СЕТКА (индекс только из времени)
   SYNC: {

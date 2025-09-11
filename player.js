@@ -25,8 +25,8 @@
 
   // Планировщик
   const LOOKAHEAD_MS      = Math.min(900, Math.floor(GRID_MS * 0.85));
-  const SCHED_TICK_MS     = 30;     // чаще тик — меньше шанс промаха
-  const MISS_TOL_MS       = 150;    // даём до 0.28с на «досchedule» первого удара
+  const SCHED_TICK_MS     = 20;     // чаще тик — меньше шанс промаха
+  const MISS_TOL_MS       = 260;    // даём до 0.28с 
   const JOIN_GUARD_MS     = 20;     // анти-пограничный сдвиг при вычислении nowBeat
   let   lastScheduledBeat = null;
 
@@ -115,8 +115,8 @@ try {
 
 // докрутка offset по последнему якорю индекса
 {
-  const nowBeat2 = Math.floor((Data.serverNow() + JOIN_GUARD_MS - SYNC_EPOCH_MS) / GRID_MS);
-  const anchor   = await Data.getLatestAnchor(nowBeat2);
+  const { k: kNow } = Data.currentWindowInfo();
+  const anchor = await Data.getLatestAnchor(kNow);
   if (anchor){
     const N = N_active || TL_active.length || 1;
     const predIdx = ((anchor.beat + idxOffset) % N + N) % N;
@@ -155,7 +155,8 @@ try {
         const nowBeat = Math.floor((Data.serverNow() + JOIN_GUARD_MS - SYNC_EPOCH_MS) / GRID_MS);
         const { off } = computeOffsetFromChangeLog(ch, nowBeat);
         if (Number.isFinite(off)) idxOffset = off;
-        return Data.getLatestAnchor(nowBeat);
+      const { k: kNow } = Data.currentWindowInfo();
+      return Data.getLatestAnchor(kNow);
         }).then(anchor=>{
         if (anchor){
           const N = N_active || TL_active.length || 1;
@@ -193,7 +194,7 @@ try {
     // заякорим индекс на момент switch (для новой TL)
     if (N_pending > 0){
     const idxAtSwitch = ((targetBeat + pendingIdxOffset) % N_pending + N_pending) % N_pending;
-    Data.announceAnchor(targetBeat, idxAtSwitch);
+    Data.announceAnchor(k, targetBeat, idxAtSwitch);
    }
 
     // логируем смену (один раз на окно k)
