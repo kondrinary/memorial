@@ -1,5 +1,9 @@
 // main.js — UI + старт, подписка, формат/валидация, добавление, тест-записи
 (function(){
+
+
+  function dbg(msg){ try{ const el=document.getElementById('debugInfo'); if(el){ el.textContent=String(msg); } }catch(_){} }
+
   // ===== DOM =====
   const startBtn     = document.getElementById('startBtn');
   const formSection  = document.getElementById('formSection');
