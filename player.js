@@ -1,8 +1,8 @@
-// player.js — сетка + anti-miss + rotation + журнал смен (deterministic boot)
-// ПЕРЕКЛЮЧЕНИЕ СТРОГО НА ГРАНИЦЕ ОКНА (как в старой стабильной)
+// player.js — сетка + anti-miss + rotation + журнал смен (детерминированный пуск)
+// ПЕРЕКЛЮЧЕНИЕ СТРОГО НА ГРАНИЦЕ ОКНА. БЕЗ ЯКОРЕЙ.
 (function(){
   const { SYNC_EPOCH_MS, SPEED, DUR } = window.AppConfig;
-  const GRID_MS = (window.AppConfig?.SYNC?.GRID_MS) || 700;
+  const GRID_MS = (window.AppConfig?.SYNC?.GRID_MS) || 1000;
 
   let running = false;
   let rafId   = null;
@@ -26,9 +26,9 @@
 
   // Планировщик
   const LOOKAHEAD_MS      = Math.min(900, Math.floor(GRID_MS * 0.85));
-  const SCHED_TICK_MS     = 20;     // чаще тик — меньше шанс промаха
-  const MISS_TOL_MS       = 260;    // окно догонки
-  const JOIN_GUARD_MS     = 20;     // анти-пограничный сдвиг при вычислении nowBeat
+  const SCHED_TICK_MS     = 20;
+  const MISS_TOL_MS       = 260;
+  const JOIN_GUARD_MS     = 20;     // анти-пограничный сдвиг при чтении nowBeat
   let   lastScheduledBeat = null;
 
   const mod = (a,n)=> ((a % n) + n) % n;
@@ -39,18 +39,14 @@
     lastSpan = span;
   }
 
-  // === БЫЛО: первая граница ПОСЛЕ t → это и давало окно расхождения
-  // const firstBeatAfter = (t)=> Math.floor((t - SYNC_EPOCH_MS) / GRID_MS) + 1;
-
-  // === СТАЛО: точная граница окна — переключаемся РОВНО в её момент
+  // РОВНО начало окна (никаких «+1 бит»)
   const beatAtWindowStart = (t)=> Math.floor((t - SYNC_EPOCH_MS) / GRID_MS);
 
-  // offset из журнала [{k,beat,n}, ...] (по возрастанию k)
-  // ВАЖНО: будущие смены (b > nowBeat) игнорируем до их наступления.
+  // offset из журнала [{k,beat,n}, ...] (по возрастанию k), будущие смены игнорируем
   function computeOffsetFromChangeLog(changes, nowBeat){
     let off = 0, N = 0;
     for (const ch of (changes || [])){
-      const b = +ch.beat|0, n = +ch.n|0;
+      const b = (ch.beat|0), n = (ch.n|0);
       if (!n) continue;
       if (nowBeat != null && b > nowBeat) break; // будущая смена ещё не действует
       if (N === 0){ N = n; off = 0; continue; }
@@ -60,14 +56,14 @@
     return { off, Nfinal: N };
   }
 
-  // rotation при аппенде «вживую»
+  // rotation при смене длины, чтобы не было «отката» индекса
   function computePendingRotationForContinuity(targetBeat){
     const nextIdxOld = mod(targetBeat + idxOffset, N_active);
     const base       = mod(targetBeat, N_pending);
     return mod(nextIdxOld - base, N_pending);
   }
 
-  // планирование ноты на целевой beat
+  // Планирование ноты на целевой beat (с компенсацией аудиолатентности)
   function scheduleForBeat(targetBeat, whenMs, usePendingTL, isCatchUp=false){
     lastScheduledBeat = targetBeat;
     const usePending = !!usePendingTL && TL_pending && N_pending > 0;
@@ -80,9 +76,8 @@
     const node = TL[idx];
     if (!node) return;
 
-    const lenSec   = (DUR.noteLen || 0.35) * (SPEED || 1);
+    const lenSec = (DUR.noteLen || 0.35) * (SPEED || 1);
 
-    // Компенсация аудио-задержки устройства
     const bufferSec = (AppConfig?.AUDIO?.BUFFER_SEC ?? 0);
     const ctx    = (Tone?.context?._context) || Tone?.context || window.audioCtx;
     const baseL  = ((ctx?.baseLatency)||0) + ((ctx?.outputLatency)||0); // секунды
@@ -107,14 +102,14 @@
     TL_active = TL0;
     N_active  = TL_active.length | 0;
 
-    // детерминированно восстановим offset из журнала
+    // детерминированно восстановим offset из ЖУРНАЛА (без якорей)
     idxOffset = 0;
     try {
       const changes = await Data.getChangeLogOnce();
       const nowBeat = Math.floor((Data.serverNow() + JOIN_GUARD_MS - SYNC_EPOCH_MS) / GRID_MS);
       const { off } = computeOffsetFromChangeLog(changes, nowBeat);
       if (Number.isFinite(off)) idxOffset = off;
-    } catch(_) {}
+    } catch(_){}
 
     TL_pending = null; N_pending = 0; switchAtMs = null;
     pendingIdxOffset = 0;
@@ -133,7 +128,7 @@
     lastIdx = -1;
   };
 
-  // изменение TL (append/rebuild) — строго на ГРАНИЦЕ ОКНА + запись в журнал
+  // Изменение TL — строго на ГРАНИЦЕ ОКНА + запись в журнал
   Player.onTimelineChanged = function(){
     const TL_new = (window.Visual?.getTimelineSnapshot)
       ? Visual.getTimelineSnapshot()
@@ -156,17 +151,17 @@
 
     TL_pending = TL_new;
     N_pending  = TL_pending.length | 0;
-    if (N_pending === N_active){ // реально ничего не поменялось
+    if (N_pending === N_active){
       TL_pending = null; N_pending = 0; switchAtMs = null;
       return;
     }
 
-    // === КЛЮЧЕВАЯ ПРАВКА: переключаемся РОВНО на начале окна (windowStart)
+    // КЛЮЧЕВОЕ: переключаемся РОВНО на начале окна
     const { windowStart, k } = Data.currentWindowInfo();
-    const targetBeat = beatAtWindowStart(windowStart); // раньше было firstBeatAfter(windowStart)
+    const targetBeat = beatAtWindowStart(windowStart);
     switchAtMs = SYNC_EPOCH_MS + targetBeat * GRID_MS;
 
-    // Ротация, чтобы не было «отката» индекса при смене длины
+    // Ротация, чтобы не было «отката»
     if (N_active > 0 && N_pending > 0){
       pendingIdxOffset = computePendingRotationForContinuity(targetBeat);
     } else {
@@ -220,8 +215,6 @@
     const nextBeat    = curBeat + 1;
     const boundaryAbs = SYNC_EPOCH_MS + nextBeat * GRID_MS;
     const dtMs        = boundaryAbs - nowSrv;
-
-    // Проверка: на этой границе не произойдёт ли switch
     const switchIsNow = !!(switchAtMs && Math.abs(boundaryAbs - switchAtMs) <= 8 && TL_pending);
 
     if (dtMs > 0 && dtMs <= LOOKAHEAD_MS && lastScheduledBeat !== nextBeat){
