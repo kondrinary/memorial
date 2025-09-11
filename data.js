@@ -1,5 +1,5 @@
 // data.js — RTDB + «серверные» часы + окно 1с + журнал смен TL
-// БЕЗ ЯКОРЕЙ. Исправлен маппинг ts (никаких ts:0).
+// Основано на старой стабильной версии. Добавлен безопасный маппинг ts.
 (function(){
   const Data = {};
   let ready = false;
@@ -43,7 +43,7 @@
         birth: bDigits,
         death: dDigits,
         digits,
-        ts: firebase.database.ServerValue.TIMESTAMP // сервер проставит число
+        ts: firebase.database.ServerValue.TIMESTAMP  // сервер проставит число
       });
       return true;
     } catch (e){
@@ -70,11 +70,9 @@
         .sort(([ka],[kb]) => ka.localeCompare(kb))
         .map(([id, obj]) => {
           const rawTs = obj.ts;
-          // НЕ допускаем попадания «свежей» записи в текущее окно,
-          // пока сервер не проставил реальный числовой ts.
-          const ts = (typeof rawTs === 'number')
-            ? rawTs
-            : Number.MAX_SAFE_INTEGER; // активируется только со следующего окна
+          // Важно: запись без числового ts НЕ попадает в текущее окно
+          // (ждём реальный серверный таймстамп)
+          const ts = (typeof rawTs === 'number') ? rawTs : Number.MAX_SAFE_INTEGER;
           return {
             id,
             birth: obj.birth,
@@ -95,7 +93,7 @@
 
   function _windowInfo(nowMs){
     const { SYNC_EPOCH_MS } = AppConfig;
-    const { MS:WIN_MS, DELAY_MS } = AppConfig.WINDOW || { MS:1000, DELAY_MS:200 };
+    const { MS:WIN_MS, DELAY_MS } = AppConfig.WINDOW || { MS:1000, DELAY_MS:250 };
     const t = nowMs - (DELAY_MS || 0);
     const k = Math.floor((t - SYNC_EPOCH_MS) / WIN_MS);
     const windowStart = SYNC_EPOCH_MS + k * WIN_MS;
