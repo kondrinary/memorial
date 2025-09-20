@@ -1,5 +1,4 @@
 // data.js — RTDB + «серверные» часы + окно 1с + журнал смен TL
-// Добавлен 2s лаг активации новых записей (ACTIVATION_HOLDOFF_MS).
 (function(){
   const Data = {};
   let ready = false;
@@ -40,10 +39,10 @@
     try {
       const digits = (bDigits + dDigits).split('').map(n => +n);
       await datesRef.push({
-        birth:  bDigits,
-        death:  dDigits,
+        birth: bDigits,
+        death: dDigits,
         digits,
-        ts: firebase.database.ServerValue.TIMESTAMP  // сервер проставит число
+        ts: firebase.database.ServerValue.TIMESTAMP  // важно для окна
       });
       return true;
     } catch (e){
@@ -52,7 +51,7 @@
     }
   };
 
-  // ----- subscribe with activation window (1s windows + 2s holdoff) -----
+  // ----- subscribe with 1s activation window -----
   let _rawList = [];
   let _lastEmitIds = '';
   let _lastWindowId = null;
@@ -68,18 +67,13 @@
 
       _rawList = Object.entries(val)
         .sort(([ka],[kb]) => ka.localeCompare(kb))
-        .map(([id, obj]) => {
-          const rawTs = obj.ts;
-          // ВАЖНО: пока сервер не проставил числовой ts, запись НЕ активируется
-          const ts = (typeof rawTs === 'number') ? rawTs : Number.MAX_SAFE_INTEGER;
-          return {
-            id,
-            birth: obj.birth,
-            death: obj.death,
-            digits: obj.digits,
-            ts
-          };
-        });
+        .map(([id, obj]) => ({
+          id,
+          birth: obj.birth,
+          death: obj.death,
+          digits: obj.digits,
+          ts: typeof obj.ts === 'number' ? obj.ts : 0
+        }));
 
       _emitIfChanged(handler);
     }, (err)=>{
@@ -92,20 +86,17 @@
 
   function _windowInfo(nowMs){
     const { SYNC_EPOCH_MS } = AppConfig;
-    const { MS:WIN_MS, DELAY_MS, ACTIVATION_HOLDOFF_MS } = AppConfig.WINDOW || { MS:1000, DELAY_MS:250, ACTIVATION_HOLDOFF_MS:2000 };
+    const { MS:WIN_MS, DELAY_MS } = AppConfig.WINDOW || { MS:1000, DELAY_MS:200 };
     const t = nowMs - (DELAY_MS || 0);
     const k = Math.floor((t - SYNC_EPOCH_MS) / WIN_MS);
     const windowStart = SYNC_EPOCH_MS + k * WIN_MS;
-    const holdoff = (typeof ACTIVATION_HOLDOFF_MS === 'number') ? ACTIVATION_HOLDOFF_MS : 2000;
-    return { k, windowStart, WIN_MS, holdoff };
+    return { k, windowStart, WIN_MS };
   }
   Data.currentWindowInfo = function(){ return _windowInfo(Data.serverNow()); };
 
   function _filteredByWindow(raw){
-    const { windowStart, holdoff } = _windowInfo(Data.serverNow());
-    // Ключ: даём дополнительный лаг в 2s перед включением новой записи
-    const cutoff = windowStart - holdoff;
-    return raw.filter(x => (x.ts || 0) <= cutoff);
+    const { windowStart } = _windowInfo(Data.serverNow());
+    return raw.filter(x => (x.ts || 0) <= windowStart);
   }
 
   function _emitIfChanged(handler){
@@ -136,7 +127,7 @@
     tick();
   }
 
-  // ----- change log (идемпотентно, ключ — окно k) -----
+  // ----- change log (идемпотентно) -----
   Data.announceChange = async function(k, beat, n){
     if (!ready && !Data.init()) return;
     try {
@@ -159,7 +150,7 @@
     }
   };
 
-  // ----- «серверные» часы: .info + (опц.) HTTP-UTC с плавной подстройкой -----
+  // ----- «серверные» часы: .info + HTTP-UTC с плавной подстройкой -----
   let offsetRef = null;
   let _anchorPerfNow = 0, _anchorLocalMs = 0, _anchorOffset0 = 0;
   let _rawFbOffsetMs = 0, _httpOffsetMs = 0, _stableOffsetMs = 0;
