@@ -193,6 +193,7 @@
       const cur = TL_active[idxNow];
       if (cur){
         highlight(cur.span);
+        OverlayFX?.pulseAtSpan(cur.span);
         const debug = document.getElementById('debugInfo');
         if (debug) debug.textContent = `Играет: ${cur.digit} → ${cur.freq.toFixed(2)} Гц (idx ${idxNow})`;
       }

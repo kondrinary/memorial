@@ -89,7 +89,15 @@
           Visual.build(list);
         }
 
-OverlayFX?.init({ rootEl: document.getElementById('stream'), enableNoise: true });
+OverlayFX?.init({
+  rootEl: document.getElementById('stream'),
+  enableNoise: true,   // зерно
+  blurPx: 4,           // реальный блюр цифр под оверлеем (0..8 начни с 2)
+  blend: 'overlay',    // режим смешивания шума/пульсов
+  scanlines: true,    // если хочешь — true
+  vignette: 0.15       // лёгкая виньетка
+});
+
 
         if (window.Player && typeof Player.start === 'function') {
           Player.start();
