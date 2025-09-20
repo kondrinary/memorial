@@ -88,6 +88,9 @@
         if (window.Visual && typeof Visual.build === 'function') {
           Visual.build(list);
         }
+
+OverlayFX?.init({ rootEl: document.getElementById('stream'), enableNoise: true });
+
         if (window.Player && typeof Player.start === 'function') {
           Player.start();
         }
