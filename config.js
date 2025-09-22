@@ -42,7 +42,7 @@ window.AppConfig = {
   // Маппинг 0..9 → частоты
   FREQ_MIN: 90,
   FREQ_MAX: 500,
-  PITCH_MODE: 'geometric',
+  PITCH_MODE: 'linear',
 
   // Ветка RTDB
   DB_PATH: 'dates',
