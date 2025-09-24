@@ -1,184 +1,280 @@
-// synth.commented.js — версия с MORPH (CrossFade) между двумя корпусами: синус ⇄ пила
-// Параллельные FX‑ветки: Reverb→EQ и отдельный Delay, подмешиваются к сухому тону.
-//
-// Архитектура:
-//  (Корпус А: sine) ─┐
-//                    ├─► CrossFade(fade=bodyMorph 0..1) ─► bodyGain ─┐
-//  (Корпус B: saw) ──┘                                               │
-//                                                                   ▼
-//  + (FM‑атака, опционально) ─► attackGain ─┐
-//                                           ├─► busGain ─► DC‑HPF ─► Comp ─► Lowpass ─►┬─► dryGain ─┬─► master ─► Destination
-//                                           │                                           ├─► revSend → Freeverb → EQ3 → revWetGain ─┘
-//                                           │                                           └─► delSend → PingPongDelay → delWetGain ──┘
-// Примечание: FM‑слой можно выключить полностью (FX.fmEnable=false или attackLevel=0).
+// synth.js — корпус A/B с MORPH, FM-атака, параллельные реверб и дилей.
+// ВЕРСИЯ: голосовой пул для пер-нотного релиза + дилей/фидбек от индекса с плавными рампами.
+// Публичный API: Synth.init(), Synth.trigger(freq, lenSec, vel?, whenAbs?, digit?), Synth.fx (чтение).
 
-(function () {
-  const Synth = {};             // Публичный API: init, trigger, setFX, fx
-  let ready = false;            // true после инициализации
+(function(){
+  const Synth = {};
+  let ready = false;
 
-  // === Узлы ===
-  let bodyPolyA, bodyPolyB;     // ДВА корпусных полисинта: A (sine) и B (saw)
-  let bodyXFade;                // CrossFade для морфа спектра между A и B
-  let bodyGain, attackPoly, attackGain, busGain; // уровни и FM‑слой
-  let dcCut, comp, lowpass, dryGain;             // магистраль
-  let revSend, reverb, revEQ, revWetGain;        // параллельная ревёрб‑ветка
-  let delSend, ping, delWetGain;                 // параллельная дилей‑ветка
-  let master;                                    // мастер перед Destination
+  // ===== Утилиты =====
+  const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+  const has   = (o,k) => Object.prototype.hasOwnProperty.call(o||{}, k);
+  const P     = (typeof window !== 'undefined' && window.SYNTH_PARAMS) ? window.SYNTH_PARAMS : {};
+  const pick  = (k, def) => has(P,k) ? P[k] : def;
+  const merge = (base, extra) => Object.assign({}, base||{}, extra||{});
 
-  // === Все настройки в начале === P  берем из внешнего модуля SYNTH_PARAMS
-  const P = (window.SYNTH_PARAMS || {}); 
-
+  // ===== FX/параметры (снимаются единожды на старте) =====
   const FX = {
-    // Баланс и уровни
-    bodyLevel:   pick('bodyLevel',   0.50),  // общий уровень корпуса (после CrossFade)
-    attackLevel: pick('attackLevel', 0.00),  // уровень FM‑атаки
-    busLevel:    pick('busLevel',    0.55),
+    // Баланс
+    bodyLevel:   pick('bodyLevel', 0.5),
+    attackLevel: pick('attackLevel', 0.0),
+    busLevel:    pick('busLevel', 0.6),
 
-    // Корпусный MORPH (A ↔ B)
-    bodyMorph:   pick('bodyMorph',   0.00),  // 0 = чистый sine (A), 1 = чистая saw (B)
-    bodyA_Osc:   pick('bodyA_Osc',  'sine'), // тип волны корпуса A (по умолчанию sine)
-    bodyB_Osc:   pick('bodyB_Osc',  'sawtooth'),  // тип волны корпуса B (по умолчанию saw)
-    // единая огибающая корпуса (применяется к обоим синтам A и B)
-    bodyEnv: merge({ attack:0.060, decay:0.30, sustain:0.20, release:2.0, attackCurve:'sine', releaseCurve:'sine' }, P.bodyEnv),
+    // Корпус MORPH
+    bodyMorph:   clamp(pick('bodyMorph', 0.0), 0, 1),
+    bodyA_Osc:   pick('bodyA_Osc','sine'),
+    bodyB_Osc:   pick('bodyB_Osc','sawtooth'),   // важно: валидное имя осциллятора
+    bodyEnv:     merge({ attack:0.06, decay:0.30, sustain:0.20, release:0.40, attackCurve:'sine', releaseCurve:'sine' }, pick('bodyEnv', {})),
 
-    // FM‑слой (можно отключить полностью)
-    fmEnable:      pick('fmEnable', true),
-    fmHarmonicity: pick('fmHarmonicity', 1.7),
-    fmModIndex:    pick('fmModIndex',    4.0),
-    fmEnv:    merge({ attack:0.015, decay:0.10, sustain:0.05, release:0.12, attackCurve:'sine', releaseCurve:'sine' }, P.fmEnv),
-    fmModEnv: merge({ attack:0.015, decay:0.10, sustain:0.05, release:0.12, attackCurve:'sine', releaseCurve:'sine' }, P.fmModEnv),
+    // FM-атака
+    fmEnable:    pick('fmEnable', true),
+    fmModIndex:  pick('fmModIndex', 15),
+    fmHarm:      pick('fmHarm', 1.0),
+    fmEnv:       merge({ attack:0.015, decay:0.08, sustain:0.00, release:0.10, attackCurve:'sine', releaseCurve:'sine' }, pick('fmEnv', {})),
+    fmModEnv:    merge({ attack:0.010, decay:0.06, sustain:0.00, release:0.10, attackCurve:'sine', releaseCurve:'sine' }, pick('fmModEnv', {})),
 
     // Магистраль
-    dcCutHz:     pick('dcCutHz',     80),
-    compThresh:  pick('compThresh',  -30),
-    compRatio:   pick('compRatio',   2.0),
-    compAttack:  pick('compAttack',  0.03),
+    dcCutHz:     pick('dcCutHz', 80),
+    compThresh:  pick('compThresh', -30),
+    compRatio:   pick('compRatio', 2.0),
+    compAttack:  pick('compAttack', 0.03),
     compRelease: pick('compRelease', 0.25),
     lowpassFreq: pick('lowpassFreq', 3300),
 
-    // Параллельная ревёрб‑ветка
-    reverbRoom: pick('reverbRoom', 0.78),
-    reverbDamp: pick('reverbDamp', 1900),
-    reverbWet:  pick('reverbWet',  0.18),
-    revEqLow:       pick('revEqLow', 0),
-    revEqMid:       pick('revEqMid', 0),
-    revEqHigh:      pick('revEqHigh',0),
-    revEqLowFreq:   pick('revEqLowFreq', 400),
-    revEqHighFreq:  pick('revEqHighFreq',2500),
+    // Реверб-ветка
+    reverbRoom:  clamp(pick('reverbRoom', 0.78), 0, 1),
+    reverbDamp:  pick('reverbDamp', 1900),
+    reverbWet:   clamp(pick('reverbWet', 0.18), 0, 1),
+    revEqLow:    pick('revEqLow', 0),
+    revEqMid:    pick('revEqMid', 0),
+    revEqHigh:   pick('revEqHigh', 0),
+    revEqLowFreq:  pick('revEqLowFreq', 400),
+    revEqHighFreq: pick('revEqHighFreq', 2500),
 
-    // Параллельная дилей‑ветка
-    delayTime: (P.preDelaySec !== undefined ? P.preDelaySec : (P.delayTime !== undefined ? P.delayTime : '4n')),
-    feedback:  pick('feedback',  0.18),
-    delayWet:  pick('delayWet',  0.08),
+    // Дилей-ветка (стартовые значения; дальше — от индекса)
+    delayTime:   pick('delayTime', '4n'),
+    feedback:    clamp(pick('feedback', 0.18), 0, 0.95),
+    delayWet:    clamp(pick('delayWet', 0.08), 0, 1),
+    echoWet:  clamp(pick('echoWet',  0.70), 0, 1),
+    echoRoom: clamp(pick('echoRoom', 0.65), 0, 1),
+    echoDamp:       pick('echoDamp', 2200),
 
-    // Системные
-    bodyPolyMax:   pick('bodyPolyMax',   16),
+    // Индекс-зависимые кривые
+    indexRelMin:       pick('indexRelMin', 0.30),
+    indexRelMax:       pick('indexRelMax', 6.00),
+    indexRelCurveK:    pick('indexRelCurveK', 1.0),
+    indexDelayMinSec:  pick('indexDelayMinSec', 0.08),
+    indexDelayMaxSec:  pick('indexDelayMaxSec', 0.60),
+    indexFeedbackMin:  clamp(pick('indexFeedbackMin', 0.20), 0, 0.95),
+    indexFeedbackMax:  clamp(pick('indexFeedbackMax', 0.65), 0, 0.95),
+    indexDelayCurveK:     pick('indexDelayCurveK', 1.2),
+    indexFeedbackCurveK:  pick('indexFeedbackCurveK', 1.3),
+
+    // Полифония/мастер
+    bodyPolyMax:   pick('bodyPolyMax', 16),
     attackPolyMax: pick('attackPolyMax', 16),
-    masterDb:      pick('masterDb',      -4)
+    masterDb:      pick('masterDb', -4)
   };
 
-  function pick(key, def){ return (P[key] !== undefined ? P[key] : def); }
-  function merge(base, extra){ if (!extra) return { ...base }; const out = { ...base }; for (const k in extra){ const v = extra[k]; out[k] = (v && typeof v === 'object' && !Array.isArray(v)) ? { ...(base[k]||{}), ...v } : v; } return out; }
+  // ===== Узлы звука =====
+  // Корпус: пул голосов (каждый голос = Synth A + Synth B + CrossFade + Gain)
+  let voices = [];
+  class Voice {
+    constructor(opts){
+      const { bodyEnv, bodyA_Osc, bodyB_Osc, bodyMorph, bodyLevel } = opts;
+      this.a  = new Tone.Synth({ oscillator:{ type: bodyA_Osc }, envelope:{ ...bodyEnv } });
+      this.b  = new Tone.Synth({ oscillator:{ type: bodyB_Osc }, envelope:{ ...bodyEnv } });
+      this.xf = new Tone.CrossFade(clamp(bodyMorph,0,1));
+      this.nominal = clamp(bodyLevel,0,1);
+      this.g  = new Tone.Gain(this.nominal);
+      this.a.connect(this.xf.a);
+      this.b.connect(this.xf.b);
+      this.xf.connect(this.g);
+      this.freeAt = 0;
+    }
+    connect(dest){ this.g.connect(dest); }
+    play(freq, lenSec, vel, when, rel){
+      // Если голос ещё занят к моменту новой ноты — мягко приглушим его перед атакой
+      if (this.freeAt > when) {
+        const now = Tone.now();
+        const pre = Math.max(now, when - 0.012); // 12 мс до старта
+        const post = when + 0.008;               // 8 мс после старта
+        if (this.g.gain.cancelAndHoldAtTime && this.g.gain.linearRampToValueAtTime) {
+          this.g.gain.cancelAndHoldAtTime(pre);
+          this.g.gain.linearRampToValueAtTime(0, when);
+          this.g.gain.linearRampToValueAtTime(this.nominal, post);
+        }
+      }
+      // Релиз пер-нотно, не затрагивая другие голоса
+      this.a.set({ envelope:{ release: rel }});
+      this.b.set({ envelope:{ release: rel }});
+      // Запуск ноты
+      this.a.triggerAttackRelease(freq, lenSec, when, vel);
+      this.b.triggerAttackRelease(freq, lenSec, when, vel);
+      this.freeAt = when + lenSec + rel + 0.03;
+    }
+  }
+  function pickVoice(atTime){
+    let best = voices[0];
+    for (const v of voices){
+      if (v.freeAt <= atTime) return v;
+      if (!best || v.freeAt < best.freeAt) best = v;
+    }
+    return best;
+  }
 
-  // === Инициализация ===
-  Synth.init = async function(){
-    if (typeof Tone === 'undefined') throw new Error('Tone.js не загрузился');
-    try{ const ctx = Tone.getContext(); ctx.latencyHint='playback'; ctx.lookAhead=0.20; ctx.updateInterval=0.03; Tone.Destination.volume.value=FX.masterDb; }catch(_){ }
+  // FM-атака (общий PolySynth ок, т.к. короткие вспышки)
+  let attackPoly, attackGain;
 
-    // ДВА корпуса: одинаковая огибающая, разные формы
-    bodyPolyA = new Tone.PolySynth(Tone.Synth, { oscillator:{ type: FX.bodyA_Osc }, envelope:{ ...FX.bodyEnv } });
-    bodyPolyB = new Tone.PolySynth(Tone.Synth, { oscillator:{ type: FX.bodyB_Osc }, envelope:{ ...FX.bodyEnv } });
-    bodyPolyA.maxPolyphony = FX.bodyPolyMax | 0;
-    bodyPolyB.maxPolyphony = FX.bodyPolyMax | 0;
+  // Сумма и FX
+  let bodyBusGain, dcHPF, comp, lowpass;
+  let dryGain, revSend, reverb, revEQ, revWetGain;
+  let delSend, ping, delWetGain;
+  let echoVerb; // реверб для ПОВТОРОВ, стоит ПОСЛЕ дилея
+  let masterGain;
 
-    // CrossFade для морфа спектра
-    bodyXFade = new Tone.CrossFade(FX.bodyMorph); // 0..1, equal‑power crossfade
+  // ===== Инициализация =====
+  Synth.init = function(){
+    if (ready) return Synth.fx;
 
-    // Соединяем корпуса в CrossFade входы
-    bodyPolyA.connect(bodyXFade.a);
-    bodyPolyB.connect(bodyXFade.b);
+    // Пул голосов корпуса
+    const N = Math.max(1, FX.bodyPolyMax|0);
+    voices = new Array(N);
+    for (let i=0;i<N;i++){
+      const v = new Voice({
+        bodyEnv: FX.bodyEnv,
+        bodyA_Osc: FX.bodyA_Osc,
+        bodyB_Osc: FX.bodyB_Osc,
+        bodyMorph: FX.bodyMorph,
+        bodyLevel: FX.bodyLevel
+      });
+      voices[i] = v;
+    }
 
-    // Гейн корпуса (после морфа)
-    bodyGain = new Tone.Gain(FX.bodyLevel);
-
-    // FM‑слой (опционально)
+    // FM-атака
     attackPoly = new Tone.PolySynth(Tone.FMSynth, {
-      harmonicity: FX.fmHarmonicity,
-      modulationIndex: FX.fmModIndex,
-      oscillator: { type: 'sine' },
-      modulation: { type: 'sine' },
-      envelope: { ...FX.fmEnv },
-      modulationEnvelope: { ...FX.fmModEnv }
+      maxPolyphony: FX.attackPolyMax|0,
+      volume: -6
     });
-    attackPoly.maxPolyphony = FX.attackPolyMax | 0;
-    attackGain = new Tone.Gain(FX.attackLevel);
+    attackPoly.set({
+      harmonicity: FX.fmHarm,
+      modulationIndex: FX.fmModIndex,
+      envelope: FX.fmEnv,
+      modulationEnvelope: FX.fmModEnv
+    });
+    attackGain = new Tone.Gain(clamp(FX.attackLevel,0,1));
 
-    // Общая шина
-    busGain = new Tone.Gain(FX.busLevel);
+    // Шина корпуса
+    bodyBusGain = new Tone.Gain(clamp(FX.busLevel,0,1));
 
-    // Магистраль
-    dcCut   = new Tone.Filter(FX.dcCutHz, 'highpass');
+    // Подключаем голоса к шине
+    for (const v of voices) v.connect(bodyBusGain);
+    attackPoly.connect(attackGain);
+    attackGain.connect(bodyBusGain);
+
+    // Последовательная магистраль
+    dcHPF   = new Tone.Filter({ type:'highpass', frequency: FX.dcCutHz, Q: 0.707 });
     comp    = new Tone.Compressor({ threshold: FX.compThresh, ratio: FX.compRatio, attack: FX.compAttack, release: FX.compRelease });
-    lowpass = new Tone.Filter(FX.lowpassFreq, 'lowpass');
-    dryGain = new Tone.Gain(1);
+    lowpass = new Tone.Filter({ type:'lowpass', frequency: FX.lowpassFreq, Q: 0.707 });
 
-    // Параллельная реверб‑ветка
-    revSend    = new Tone.Gain(1);
-    reverb     = new Tone.Freeverb({ roomSize: FX.reverbRoom, dampening: FX.reverbDamp, wet: 1 });
-    revEQ      = new Tone.EQ3({ low: FX.revEqLow, mid: FX.revEqMid, high: FX.revEqHigh, lowFrequency: FX.revEqLowFreq, highFrequency: FX.revEqHighFreq });
-    revWetGain = new Tone.Gain(FX.reverbWet);
+    bodyBusGain.connect(dcHPF);
+    dcHPF.connect(comp);
+    comp.connect(lowpass);
 
-    // Параллельная дилей‑ветка
-    delSend    = new Tone.Gain(1);
-    ping       = new Tone.PingPongDelay({ delayTime: FX.delayTime, feedback: FX.feedback, wet: 1 });
-    delWetGain = new Tone.Gain(FX.delayWet);
+    // Разветвление на параллельные ветки
+    dryGain   = new Tone.Gain(1);
+    revSend   = new Tone.Gain(1);
+    delSend   = new Tone.Gain(1);
+    lowpass.fan(dryGain, revSend, delSend);
 
-    // Роутинг: корпуса → XFade → bodyGain → bus; FM → attackGain → bus
-    bodyXFade.connect(bodyGain).connect(busGain);
-    attackPoly.connect(attackGain).connect(busGain);
-
-    // Шина в магистраль
-    busGain.chain(dcCut, comp, lowpass);
-
-    // Разветвление на параллельные FX
-    lowpass.connect(dryGain);
-    lowpass.connect(revSend);
-    lowpass.connect(delSend);
-
-    // Параллельные ветки
+    // Реверб-ветка: Freeverb → EQ3 → revWetGain
+    reverb    = new Tone.Freeverb({ roomSize: FX.reverbRoom, dampening: FX.reverbDamp, wet: 1 });
+    revEQ     = new Tone.EQ3({ low: FX.revEqLow, mid: FX.revEqMid, high: FX.revEqHigh, lowFrequency: FX.revEqLowFreq, highFrequency: FX.revEqHighFreq });
+    revWetGain= new Tone.Gain(clamp(FX.reverbWet,0,1));
     revSend.chain(reverb, revEQ, revWetGain);
-    delSend.chain(ping, delWetGain);
 
-    // Сумма путей → мастер → выход
-    master = new Tone.Gain(1);
-    dryGain.connect(master);
-    revWetGain.connect(master);
-    delWetGain.connect(master);
-    master.connect(Tone.Destination);
+// Дилей-ветка: PingPongDelay → (ЭХО-реверб) → delWetGain
+const maxDT = Math.max(FX.indexDelayMaxSec || 1.0, 1.0);
+ping     = new Tone.PingPongDelay({ delayTime: FX.delayTime, feedback: FX.feedback, wet: 1, maxDelayTime: maxDT });
+echoVerb = new Tone.Freeverb({ roomSize: FX.echoRoom, dampening: FX.echoDamp, wet: FX.echoWet });
+delWetGain = new Tone.Gain(clamp(FX.delayWet,0,1));
+
+// если у тебя уже стоят «сглаживающие» узлы (например, delPreComp, delTone) — оставь их ПЕРЕД ping:
+// delSend.chain(delPreComp, delTone, ping, echoVerb, delWetGain);
+delSend.chain(ping, echoVerb, delWetGain);
+
+
+    // Мастер
+    masterGain = new Tone.Gain(1);
+    dryGain.connect(masterGain);
+    revWetGain.connect(masterGain);
+    delWetGain.connect(masterGain);
+    masterGain.connect(Tone.Destination);
+    Tone.Destination.volume.value = FX.masterDb;
 
     ready = true;
-    Synth.fx = JSON.parse(JSON.stringify(FX));
+    Synth.fx = FX;
+    return Synth.fx;
   };
 
-  // === Триггер ноты ===
-  Synth.trigger = function(freq, lenSec, vel=0.65, whenAbs=null){
+  // ===== Триггер ноты =====
+  // digit: 0..9 — цифра текущей ноты (высота), влияет на релиз и дилей
+  Synth.trigger = function(freq, lenSec, vel=0.65, whenAbs=null, digit=null){
     if (!ready) return;
-    const nowTone = Tone.now();
-    const when = (whenAbs!=null) ? whenAbs : (nowTone + 0.015);
+    const now = Tone.now();
+    const when = (whenAbs!=null) ? whenAbs : (now + 0.015);
 
-    // Оба корпуса играют одновременно, а видимая доля определяется CrossFade
-    bodyPolyA.triggerAttackRelease(freq, lenSec, when, vel);
-    bodyPolyB.triggerAttackRelease(freq, lenSec, when, vel);
+    // Нормированное значение индекса
+    const d = (digit==null ? 0 : clamp(digit|0, 0, 9));
+    const t = d / 9; // 0..1
 
-    // FM‑слой — по желанию
-    if (Synth.fx.fmEnable && Synth.fx.attackLevel > 0.001){
+    // --- Релиз по индексу (экспонента k): низ длинный, верх короткий ---
+    const k   = FX.indexRelCurveK;
+    const rel = FX.indexRelMin + (FX.indexRelMax - FX.indexRelMin) * Math.pow(1 - t, k);
+
+    // --- Дилей/фидбек по индексу ---
+    // ВРЕМЯ: низ (t=0) = длиннее, верх (t=1) = короче
+    const dtSec = FX.indexDelayMaxSec - (FX.indexDelayMaxSec - FX.indexDelayMinSec) * Math.pow(t, FX.indexDelayCurveK || 1);
+    // ФИДБЕК: растёт к верху
+    const fb    = FX.indexFeedbackMin + (FX.indexFeedbackMax - FX.indexFeedbackMin) * Math.pow(t, FX.indexFeedbackCurveK || 1);
+    const fbSafe= clamp(fb, 0, 0.90);
+
+    // Плавные рампы для избежания щелчков при смене параметров
+    const ramp = 0.02; // 20 мс
+    const now2  = Tone.now();
+    const r0    = Math.max(now2, when - ramp); // подводим значение ЧУТЬ до атаки
+
+    if (ping?.delayTime?.cancelAndHoldAtTime && ping?.delayTime?.linearRampToValueAtTime){
+      ping.delayTime.cancelAndHoldAtTime(r0);
+      ping.delayTime.linearRampToValueAtTime(dtSec, when);
+    } else if (ping?.delayTime?.setValueAtTime){
+      ping.delayTime.setValueAtTime(dtSec, when);
+    } else {
+      ping.delayTime.value = dtSec;
+    }
+    if (ping?.feedback?.cancelAndHoldAtTime && ping?.feedback?.linearRampToValueAtTime){
+      ping.feedback.cancelAndHoldAtTime(r0);
+      ping.feedback.linearRampToValueAtTime(fbSafe, when);
+    } else if (ping?.feedback?.setValueAtTime){
+      ping.feedback.setValueAtTime(fbSafe, when);
+    } else if (ping?.feedback?.rampTo){
+      ping.feedback.rampTo(fbSafe, ramp);
+    } else {
+      ping.feedback.value = fbSafe;
+    }
+
+    // --- Запускаем корпус через голос с пер-нотным релизом ---
+    const v = pickVoice(when);
+    v.play(freq, lenSec, vel, when, rel);
+
+    // --- FM-атака (опционально) ---
+    if (FX.fmEnable && FX.attackLevel > 0.001){
       const atkLen = Math.min(lenSec, 0.10);
       const atkVel = Math.min(1, vel * 0.6);
       attackPoly.triggerAttackRelease(freq, atkLen, when, atkVel);
     }
   };
 
-
-  // === Экспорт ===
+  
   window.Synth = Synth;
 })();

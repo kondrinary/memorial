@@ -1,9 +1,32 @@
-// overlay.fx.js — canvas + backdrop-blur поверх #stream
-(function () {
-  const OverlayFX = {};
-  let root, wrap, cvs, ctx, pulses = [], running = false;
+// overlay.fx.js — ТОЛЬКО вспышка над активной цифрой (без шума/виньетки/backdrop-blur).
+// Шлейф реализован через destination-out (прозрачное «выцветание»), поэтому слой не чернит фон.
+//
+// API:
+//   OverlayFX.init({ rootEl?, blurPx?, blendMode?, trailAlpha? })
+//   OverlayFX.pulseAtSpan(span)
+//   OverlayFX.setPulseBlur(px)
+//   OverlayFX.setBlend(mode)      // 'screen'|'lighter' обычно best
+//   OverlayFX.setTrail(alpha)     // 0..1; 0 = без шлейфа
 
-  let opts = { noiseAlpha: 0.10, scanlines: false, blurPx: 3, blend: 'overlay', vignette: 0.12 };
+(function () {
+  const CFG = {
+    BLUR_PX: 6,          // размытие ТОЛЬКО у вспышки (px)
+    TRAIL_ALPHA: 0.10,   // сила выцветания (0..1); 0 = чистый clearRect
+    LIFE_MS: 480,        // длительность вспышки (мс)
+    R0_FACTOR: 0.7,      // стартовый радиус (в долях от размера символа)
+    R1_FACTOR: 3.6,      // конечный радиус
+    BLEND_MODE: 'screen',// как смешивать канвас с фоном ('screen'/'lighter' — не темнят)
+    COLORS: {
+      inner: 'rgba(255,255,255,0.90)',
+      mid:   'rgba(80,200,255,0.60)',
+      outer: 'rgba(0,0,0,0.00)'
+    }
+  };
+
+  const OverlayFX = {};
+  let root, wrap, cvs, ctx;
+  let pulses = [];
+  let running = false;
 
   function ensureNodes() {
     if (wrap) return;
@@ -12,19 +35,19 @@
     wrap.style.inset = '0';
     wrap.style.pointerEvents = 'none';
     wrap.style.zIndex = '10';
-    wrap.style.background = 'rgba(0,0,0,0.001)'; // активирует backdrop-filter
-    wrap.style.backdropFilter = `blur(${opts.blurPx}px)`;
-    wrap.style.webkitBackdropFilter = `blur(${opts.blurPx}px)`;
+    // НИЧЕГО лишнего: нет background-активаторов, backdrop-filter и т.п.
 
     cvs = document.createElement('canvas');
     cvs.style.position = 'absolute';
     cvs.style.inset = '0';
     cvs.style.pointerEvents = 'none';
-    cvs.style.mixBlendMode = opts.blend;
+    cvs.style.mixBlendMode = CFG.BLEND_MODE; // влияет на то, как вспышка ляжет на цифры
 
     wrap.appendChild(cvs);
+    // гарантируем контекст позиционирования
     root.style.position = root.style.position || 'relative';
     root.appendChild(wrap);
+
     ctx = cvs.getContext('2d');
   }
 
@@ -36,75 +59,86 @@
     cvs.height = Math.max(1, Math.round(r.height * dpr));
     cvs.style.width = r.width + 'px';
     cvs.style.height = r.height + 'px';
+    // Рисуем в CSS-пикселях
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  }
-
-  function drawNoise() {
-    if (opts.noiseAlpha <= 0) return;
-    const step = 3;
-    ctx.globalAlpha = opts.noiseAlpha;
-    for (let y = 0; y < cvs.clientHeight; y += step) {
-      for (let x = 0; x < cvs.clientWidth; x += step) {
-        const v = 200 + ((Math.random() * 55) | 0);
-        ctx.fillStyle = `rgb(${v},${v},${v})`;
-        ctx.fillRect(x, y, 1, 1);
-      }
-    }
-    ctx.globalAlpha = 1;
-  }
-
-  function drawVignette() {
-    if (opts.vignette <= 0) return;
-    const w = cvs.clientWidth, h = cvs.clientHeight;
-    const g = ctx.createRadialGradient(w/2, h/2, Math.min(w,h)*0.35, w/2, h/2, Math.max(w,h)*0.75);
-    const a = 0.45 * opts.vignette;
-    g.addColorStop(0.0, `rgba(0,0,0,0)`);
-    g.addColorStop(1.0, `rgba(0,0,0,${a})`);
-    ctx.globalCompositeOperation = 'multiply';
-    ctx.fillStyle = g;
-    ctx.fillRect(0, 0, w, h);
-    ctx.globalCompositeOperation = 'source-over';
-  }
-
-  function drawPulses() {
-    const now = performance.now();
-    pulses = pulses.filter(p => now - p.start < p.life);
-    for (const p of pulses) {
-      const k = (now - p.start) / p.life;
-      const r = p.r0 + (p.r1 - p.r0) * k;
-      const a = p.a0 * (1 - k);
-      const grad = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, r);
-      grad.addColorStop(0.00, `rgba(180,255,200,${a})`);
-      grad.addColorStop(0.35, `rgba(120,220,255,${a*0.6})`);
-      grad.addColorStop(1.00, `rgba(0,0,0,0)`);
-      ctx.globalCompositeOperation = 'lighter';
-      ctx.fillStyle = grad;
-      ctx.beginPath();
-      ctx.arc(p.x, p.y, r, 0, Math.PI*2);
-      ctx.fill();
-    }
-    ctx.globalCompositeOperation = 'source-over';
   }
 
   function tick() {
     if (!running) return;
     requestAnimationFrame(tick);
-    ctx.fillStyle = 'rgba(0,0,0,0.12)'; // шлейф
-    ctx.fillRect(0, 0, cvs.clientWidth, cvs.clientHeight);
+
+    const w = cvs.clientWidth, h = cvs.clientHeight;
+
+    if (CFG.TRAIL_ALPHA <= 0) {
+      // Полное очищение — без шлейфа.
+      ctx.clearRect(0, 0, w, h);
+    } else {
+      // Правильный шлейф: делаем контент полупрозрачнее, а НЕ красим чёрным.
+      ctx.save();
+      ctx.globalCompositeOperation = 'destination-out';
+      // Альфа определяет, насколько быстро «выцветают» предыдущие пиксели.
+      ctx.fillStyle = `rgba(0,0,0,${CFG.TRAIL_ALPHA})`;
+      ctx.fillRect(0, 0, w, h);
+      ctx.restore();
+    }
+
     drawPulses();
-    drawNoise();
-    drawVignette();
   }
 
-  OverlayFX.init = function ({ rootEl, enableNoise = true, blurPx = 3, blend = 'overlay', scanlines = false, vignette = 0.12 } = {}) {
-    root = rootEl || document.getElementById('stream');
+  function drawPulses() {
+    const now = performance.now();
+    pulses = pulses.filter(p => now - p.start < p.life);
+
+    for (const p of pulses) {
+      const k = (now - p.start) / p.life;   // 0..1
+      const r = p.r0 + (p.r1 - p.r0) * k;
+      const a = p.a0 * (1 - k);
+
+      const grad = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, r);
+      grad.addColorStop(0.00, rgbaWithAlpha(CFG.COLORS.inner, a));
+      grad.addColorStop(0.35, rgbaWithAlpha(CFG.COLORS.mid, a * 0.7));
+      grad.addColorStop(1.00, CFG.COLORS.outer);
+
+      ctx.save();
+      ctx.filter = CFG.BLUR_PX > 0 ? `blur(${CFG.BLUR_PX}px)` : 'none'; // размытие ТОЛЬКО у вспышки
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+    // Возвращаем стандартную композицию для следующих операций
+    ctx.globalCompositeOperation = 'source-over';
+  }
+
+  function rgbaWithAlpha(col, alpha) {
+    if (/rgba\(/i.test(col)) {
+      return col.replace(/rgba\(([^)]+)\)/i, (_, inside) => {
+        const parts = inside.split(',').map(s => s.trim());
+        parts[3] = String(alpha);
+        return `rgba(${parts.join(',')})`;
+      });
+    }
+    if (/rgb\(/i.test(col)) {
+      return col.replace(/rgb\(([^)]+)\)/i, (_, inside) => `rgba(${inside},${alpha})`);
+    }
+    return col;
+  }
+
+  // === Публичный API ===
+  OverlayFX.init = function (opts = {}) {
+    root = opts.rootEl || document.getElementById('stream');
     if (!root) return;
-    Object.assign(opts, { noiseAlpha: enableNoise ? 0.10 : 0.0, blurPx, blend, scanlines, vignette });
+
+    if (typeof opts.blurPx === 'number')     CFG.BLUR_PX = Math.max(0, opts.blurPx|0);
+    if (typeof opts.trailAlpha === 'number') CFG.TRAIL_ALPHA = Math.max(0, Math.min(1, opts.trailAlpha));
+    if (typeof opts.blendMode === 'string')  CFG.BLEND_MODE = opts.blendMode;
+
     ensureNodes();
-    wrap.style.backdropFilter = `blur(${opts.blurPx}px)`;
-    wrap.style.webkitBackdropFilter = `blur(${opts.blurPx}px)`;
-    cvs.style.mixBlendMode = opts.blend;
+    cvs.style.mixBlendMode = CFG.BLEND_MODE;
     resize();
+
     pulses.length = 0;
     running = true;
     requestAnimationFrame(tick);
@@ -117,14 +151,21 @@
     const r = span.getBoundingClientRect();
     const x = (r.left + r.right) * 0.5 - rRoot.left;
     const y = (r.top + r.bottom) * 0.5 - rRoot.top;
-    const size = Math.max(r.width, r.height);
-    pulses.push({ x, y, start: performance.now(), life: 480, r0: size * 0.6, r1: size * 3.8, a0: 0.75 });
+    const size = Math.max(r.width, r.height) || 12;
+
+    pulses.push({
+      x, y,
+      start: performance.now(),
+      life: CFG.LIFE_MS,
+      r0: size * CFG.R0_FACTOR,
+      r1: size * CFG.R1_FACTOR,
+      a0: 1.0
+    });
   };
 
-  OverlayFX.setBlur  = (px)=> { opts.blurPx = Math.max(0, px|0); wrap && (wrap.style.backdropFilter = wrap.style.webkitBackdropFilter = `blur(${opts.blurPx}px)`); };
-  OverlayFX.setNoise = (a)=> { opts.noiseAlpha = Math.max(0, Math.min(0.3, a)); };
-  OverlayFX.setBlend = (m)=> { opts.blend = m || 'overlay'; if (cvs) cvs.style.mixBlendMode = opts.blend; };
-  OverlayFX.setVignette = (v)=> { opts.vignette = Math.max(0, Math.min(1, v)); };
+  OverlayFX.setPulseBlur = (px)=> { CFG.BLUR_PX = Math.max(0, px|0); };
+  OverlayFX.setBlend     = (m)=> { CFG.BLEND_MODE = m || 'screen'; if (cvs) cvs.style.mixBlendMode = CFG.BLEND_MODE; };
+  OverlayFX.setTrail     = (a)=> { CFG.TRAIL_ALPHA = Math.max(0, Math.min(1, a)); };
 
   window.OverlayFX = OverlayFX;
 })();

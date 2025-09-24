@@ -77,7 +77,7 @@
     const delaySec = Math.max(0, (whenMs - Data.serverNow()) / 1000);
     const whenAbs  = Tone.now() + (isCatchUp ? Math.max(0.01, delaySec) : delaySec);
     if (window.Synth?.trigger){
-      Synth.trigger(node.freq, lenSec, 0.8, whenAbs);
+      Synth.trigger(node.freq, lenSec, 0.8, whenAbs, node.digit);
     }
   }
 

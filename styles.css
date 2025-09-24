@@ -122,6 +122,10 @@ input:focus{ border-color:var(--fg); box-shadow:0 0 0 2px rgba(255,255,255,.12);
 #stream{
   white-space:pre-wrap;    /* перенос по словам/точкам */
   word-break:break-word;   /* переносим длинные куски */
+  
+ text-align: center;   
+
+  
 }
 #stream .digit{ color:#fff; transition:color .1s ease; }
 #stream .digit.active{ color:var(--green); font-weight:700; }

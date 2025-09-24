@@ -17,24 +17,75 @@
     return FREQ_MIN + d * step;
   }
 
-  // один элемент (пара дат) -> фрагмент и массив цифр
-  function renderPairToFragment(item){
-    const bStr = item.birth.slice(0,2)+'.'+item.birth.slice(2,4)+'.'+item.birth.slice(4);
-    const dStr = item.death.slice(0,2)+'.'+item.death.slice(2,4)+'.'+item.death.slice(4);
-    const text = `${bStr}.${dStr}.`;
-
-    const frag  = document.createDocumentFragment();
-    const spans = [];
-    for (const ch of text){
-      const s = document.createElement('span');
-      s.textContent = ch;
-      if (/\d/.test(ch)) s.classList.add('digit');
-      frag.appendChild(s);
-      spans.push(s);
-    }
-    const digitsOnly = (item.birth + item.death).split('').map(Number);
-    return { frag, spans, text, digitsOnly };
+// === хелперы для детерминированного «случая» по id записи и индексу символа
+function hash32(str){
+  let h = 2166136261 >>> 0;
+  for (let i=0; i<str.length; i++){
+    h ^= str.charCodeAt(i);
+    h = Math.imul(h, 16777619);
   }
+  return h >>> 0;
+}
+function rand01(seed){
+  // xorshift32
+  let x = seed >>> 0;
+  x ^= x << 13; x ^= x >>> 17; x ^= x << 5;
+  return (x >>> 0) / 4294967295;
+}
+function applyRandomGap(span, ch, itemId, charIndex){
+  const S = (window.AppConfig && AppConfig.STREAM_SPACING) || {};
+  if (!S.ENABLED) return;
+  const apply = (S.APPLY_TO === 'all') || (/\d|\./.test(ch));
+  if (!apply) return;
+
+  const min = Number(S.MIN_CH ?? 0), max = Number(S.MAX_CH ?? 0);
+  if (!(max > min)) return;
+
+  const seed = hash32(itemId + ':' + charIndex);
+  const rnd = rand01(seed);
+  const gap = min + (max - min) * rnd;
+  span.style.marginRight = gap.toFixed(3) + 'ch';
+}
+
+// === перевод цифры 0..9 -> частота (без изменений)
+function digitToFreq(d){
+  const { FREQ_MIN, FREQ_MAX, PITCH_MODE } = AppConfig;
+  if (PITCH_MODE === 'geometric') {
+    const ratio = FREQ_MAX / FREQ_MIN;
+    return FREQ_MIN * Math.pow(ratio, d / 9);
+  }
+  const step = (FREQ_MAX - FREQ_MIN) / 9;
+  return FREQ_MIN + d * step;
+}
+
+// === ОДИН ЭЛЕМЕНТ (пара дат) -> фрагмент и массив цифр (обновлено)
+function renderPairToFragment(item){
+  const bStr = item.birth.slice(0,2)+'.'+item.birth.slice(2,4)+'.'+item.birth.slice(4);
+  const dStr = item.death.slice(0,2)+'.'+item.death.slice(2,4)+'.'+item.death.slice(4);
+  const text = `${bStr}.${dStr}.`;
+
+  const frag  = document.createDocumentFragment();
+  const spans = [];
+  let i = 0;
+  for (const ch of text){
+    const s = document.createElement('span');
+    s.textContent = ch;
+    if (/\d/.test(ch)) s.classList.add('digit');
+    applyRandomGap(s, ch, item.id, i++);  // ← случайный CSS-отступ в ch
+    frag.appendChild(s);
+    spans.push(s);
+  }
+
+  // Перенос строки после пары, если включено
+  const SP = (window.AppConfig && AppConfig.STREAM_SPACING) || {};
+  if (SP.NEWLINE_AFTER_PAIR) {
+    frag.appendChild(document.createElement('br'));
+  }
+
+  const digitsOnly = (item.birth + item.death).split('').map(Number);
+  return { frag, spans, text, digitsOnly };
+}
+
 
   // Полная отстройка (первый снимок базы)
   Visual.build = function(list){

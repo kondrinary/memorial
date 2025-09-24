@@ -1,6 +1,15 @@
 // config.js — глобальные настройки проекта
 window.AppConfig = {
 
+  // Визуальные отступы в правой ленте
+  STREAM_SPACING: {
+    ENABLED: true,      // включить случайный отступ после цифр и точек
+    MIN_CH: 0.4,        // минимум в ch
+    MAX_CH: 1.6,        // максимум в ch
+    APPLY_TO: 'digits_and_dots', // 'digits_and_dots' | 'all'
+    NEWLINE_AFTER_PAIR: true      // перенос строки после каждой пары дат
+  },
+
   CLOCK: {
     USE_FIREBASE_OFFSET: true,         // .info/serverTimeOffset
     USE_HTTP_TIME: true,               // HTTP-UTC (worldtimeapi) как второй источник

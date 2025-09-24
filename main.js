@@ -11,6 +11,9 @@
   const debugInfo    = document.getElementById('debugInfo');
   const seedBtn      = document.getElementById('seedBtn');
 
+
+  
+
   // ===== Видимость seed-кнопки из config.js =====
   if (window.AppConfig && AppConfig.ENABLE_SEED === false && seedBtn) {
     seedBtn.style.display = 'none';
@@ -89,13 +92,11 @@
           Visual.build(list);
         }
 
-OverlayFX?.init({
+OverlayFX.init({
   rootEl: document.getElementById('stream'),
-  enableNoise: true,   // зерно
-  blurPx: 4,           // реальный блюр цифр под оверлеем (0..8 начни с 2)
-  blend: 'overlay',    // режим смешивания шума/пульсов
-  scanlines: true,    // если хочешь — true
-  vignette: 0.15       // лёгкая виньетка
+  blendMode: 'screen',  // или 'lighter'
+  blurPx: 6,
+  trailAlpha: 0.10      // 0 — вообще без «послесвечения»
 });
 
 
