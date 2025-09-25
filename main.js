@@ -14,6 +14,22 @@
 
   // ===== ERROR плашка подключение и проверка =====
 const errorBar = document.getElementById('errorBar');
+const okBar    = document.getElementById('okBar');
+
+
+// --- мини-переводчик по ключу из TEXTS ---
+function tr(key, fallback){
+  const lang = (typeof CURRENT_LANG === 'string' ? CURRENT_LANG : 'ru');
+  const pack = (typeof TEXTS === 'object' && TEXTS[lang]) || {};
+  return (key in pack) ? pack[key] : (fallback ?? key);
+}
+
+window.tr = tr;                       // ← чтобы player.js мог переводить
+function setDebug(msg){               // ← единый вывод в нижнюю панель
+  if (!debugInfo) return;
+  debugInfo.textContent = (msg ?? '');
+}
+window.setDebug = setDebug;           // ← player.js тоже сможет вызвать
 
 function showError(msg){
   if (!errorBar) return;
@@ -27,6 +43,20 @@ function clearError(){
   errorBar.textContent = '';
 }
 
+function showOk(msg){
+  // при успехе скрываем ошибку
+  if (errorBar){ errorBar.hidden = true; errorBar.textContent = ''; }
+  if (!okBar) return;
+  okBar.textContent = msg;
+  okBar.hidden = false;
+}
+
+function clearOk(){
+  if (!okBar) return;
+  okBar.hidden = true;
+  okBar.textContent = '';
+}
+
 
 
 if (!ENABLE_SEED) {
@@ -35,21 +65,23 @@ if (!ENABLE_SEED) {
 }
 
   function applyTexts() {
-  const t = TEXTS[CURRENT_LANG];
+  const L = TEXTS[CURRENT_LANG];
+
+  document.getElementById("startBtn").innerText = L.startBtn;
+  document.getElementById("birthInput").placeholder = L.birthInput;
+  document.getElementById("deathInput").placeholder = L.deathInput;
+  document.querySelector("#introBox .title").innerText = L.projectTitle;
+  
+// если старт уже нажат (кнопка скрыта) — показываем playDesc, иначе introDesc
+const isPlaying = (startBtn && startBtn.style.display === 'none');
+document.querySelector("#introBox .desc").innerText = isPlaying ? L.playDesc : L.introDesc;
 
 
-
-  document.getElementById("startBtn").innerText = t.startBtn;
-  document.getElementById("birthInput").placeholder = t.birthInput;
-  document.getElementById("deathInput").placeholder = t.deathInput;
-  document.querySelector("#introBox .title").innerText = t.projectTitle;
-  document.querySelector("#introBox .desc").innerText = t.introDesc;
-  document.getElementById("status").innerText = ""; // сюда можно выводить описание на проигрывании
-
+  document.getElementById("status").innerText = "";
   const contactsBar = document.getElementById("contactsBar");
-  if (contactsBar) contactsBar.innerText = t.contacts;  
-
+  if (contactsBar) contactsBar.innerText = L.contacts;
 }
+
 
 const langBtn = document.getElementById("langBtn");
 if (langBtn){
@@ -57,6 +89,20 @@ if (langBtn){
     CURRENT_LANG = (CURRENT_LANG === "ru" ? "en" : "ru");
     langBtn.innerText = (CURRENT_LANG === "ru" ? "ENG" : "РУС");
     applyTexts();
+
+    
+  // очищаем панели и debug при смене языка
+  clearError();
+  clearOk();
+  setDebug('');
+
+
+  // если старт ещё не нажали (кнопка видна) — показываем локализованное «ожидание»
+  if (startBtn && startBtn.style.display !== 'none'){
+    setDebug(tr('waitingStart'));
+  }
+  
+
   });
 }
 
@@ -92,12 +138,15 @@ if (langBtn){
   // ====== КНОПКА «Старт» ======
 // при загрузке подтянуть тексты по текущему языку
 clearError();
+clearOk();
 applyTexts();
+setDebug(tr('waitingStart'));
 
 // переключение описания при старте
 startBtn.addEventListener('click', async ()=>{
 
   clearError();
+  clearOk();
   // поменять описание на «play» и переключить фон fire -> noise
   document.querySelector("#introBox .desc").innerText = TEXTS[CURRENT_LANG].playDesc;
   const fire = document.getElementById('fireFrame');
@@ -106,34 +155,40 @@ startBtn.addEventListener('click', async ()=>{
   if (noise) noise.style.display = 'block';
 
 
-    if (typeof Tone === 'undefined'){
-      if (debugInfo) debugInfo.textContent = 'Tone.js не загрузился. Проверьте интернет.';
-      return;
-    }
-    try {
-      await Tone.start();
-    } catch(e){
-      if (debugInfo) debugInfo.textContent = 'Браузер заблокировал аудио. Кликните ещё раз / разрешите звук.';
-      return;
-    }
+// Tone.js не подключён
+if (typeof Tone === 'undefined'){
+  showError(tr('errToneMissing'));
+  setDebug(tr('errToneMissing'));
+  return;
+}
+// нет работает звук/браузер заблокировал аудио
+try {
+  await Tone.start();
+} catch(e){
+  showError(tr('errAudioBlocked'));
+  setDebug(tr('errAudioBlocked'));
+  return;
+}
 
     // Синт
     try {
-      if (debugInfo) debugInfo.textContent = 'Готовлю звук…';
+      if (debugInfo) setDebug(tr('statusPreparingSound'));
       await Synth.init();
-      if (debugInfo) debugInfo.textContent = 'Звук готов.';
+      if (debugInfo) setDebug(tr('statusSoundReady'))
     } catch(e){
-      console.error(e);
-      if (debugInfo) debugInfo.textContent = 'Ошибка инициализации синтезатора.';
-      return;
+  console.error(e);
+  showError(tr('errSynthInit'));
+  setDebug(tr('errSynthInit'));
+  return;
     }
 
-    // Firebase
-    const ok = Data.init();
-    if (!ok){
-      if (debugInfo) debugInfo.textContent = 'Ошибка инициализации Firebase (config.js).';
-      return;
-    }
+// Firebase
+const ok = Data.init();
+if (!ok){
+  showError(tr('errFirebaseInit'));
+  setDebug(tr('errFirebaseInit'));
+  return;
+}
 
     // Единые «серверные» часы
     Data.watchServerOffset();
@@ -141,14 +196,14 @@ startBtn.addEventListener('click', async ()=>{
     // UI
     startBtn.style.display   = 'none';
     formSection.style.display = 'flex';
-    if (debugInfo) debugInfo.textContent = 'Подписываюсь на базу…';
+    if (debugInfo) setDebug(tr('statusSubscribing'))
 
     // Подписка на базу
     let startedPlayback = false;
     Data.subscribe((list)=>{
       if (!startedPlayback){
         if (!list || list.length === 0){
-          rightPane.textContent = 'Нет данных для проигрывания. Добавьте дату ниже.';
+          rightPane.textContent = tr('statusNoData');
           return;
         }
         if (window.Visual && typeof Visual.build === 'function') {
@@ -178,8 +233,9 @@ OverlayFX.init({
       }
     }, (err)=>{
       console.error('[RTDB on(value) error]', err);
-      if (debugInfo) debugInfo.textContent = `Ошибка чтения из базы: ${err?.code || err?.name || 'unknown'} — ${err?.message || ''}`;
-    });
+  if (debugInfo) debugInfo.textContent =
+    `${tr('dbReadError')}: ${err?.code || err?.name || 'unknown'} — ${err?.message || ''}`;
+  });
   });
 
 // ====== КНОПКА «Добавить» (с полосой ошибки) ======
@@ -187,18 +243,19 @@ addBtn.addEventListener('click', async ()=>{
   const bStr = birthInput.value.trim();
   const dStr = deathInput.value.trim();
 
-  // прячем прошлую ошибку перед проверкой
+  // перед новой проверкой прячем прошлые панели
   clearError();
+  clearOk();
 
   const bDate = parseValidDate(bStr);
   const dDate = parseValidDate(dStr);
 
   if (!bDate || !dDate){
-    showError('Ошибка: формат строго ДД.ММ.ГГГГ');
+    showError(tr('errBadFormat')); // неверный формат даты
     return;
   }
   if (dDate.getTime() < bDate.getTime()){
-    showError('Ошибка: дата смерти раньше даты рождения.');
+    showError(tr('errDeathBeforeBirth')); // смерть раньше рождения
     return;
   }
 
@@ -207,15 +264,14 @@ addBtn.addEventListener('click', async ()=>{
 
   const ok = await Data.pushDate(bDigits, dDigits);
   if (ok){
-    // успех → прячем ошибку и чистим поля
-    clearError();
     birthInput.value = '';
     deathInput.value = '';
-    // статус можно не трогать (пусть остаётся описанием воспроизведения)
+    showOk( tr('okBar') ); // добавлено в базу
   } else {
-    showError('Ошибка записи. Проверьте соединение/Rules.');
+    showError( tr('errWriteFailed') );  // ошибка записи в базу
   }
 });
+
 
 
   // ====== КНОПКА «Тестовая запись» ======
@@ -229,11 +285,11 @@ addBtn.addEventListener('click', async ()=>{
 
   if (seedBtn){
     seedBtn.addEventListener('click', async ()=>{
-      if (debugInfo) debugInfo.textContent = 'Пробую добавить тестовую запись…';
+      if (debugInfo) debugInfo.textContent = tr('seedAdding');
 
       const okInit = Data.init();
       if (!okInit){
-        if (debugInfo) debugInfo.textContent = 'Firebase не инициализируется. Проверь config.js.';
+        if (debugInfo) debugInfo.textContent = tr('seedInitFailed');
         return;
       }
 
@@ -242,9 +298,9 @@ addBtn.addEventListener('click', async ()=>{
 
       const okPush = await Data.pushDate(preset.b, preset.d);
       if (okPush){
-        if (debugInfo) debugInfo.textContent = 'Тестовая запись добавлена: ' + preset.b + ' – ' + preset.d;
+        if (debugInfo) debugInfo.textContent = `${tr('seedAdded')} ${preset.b} – ${preset.d}`;
       } else {
-        if (debugInfo) debugInfo.textContent = 'Ошибка записи (Rules/сеть).';
+        if (debugInfo) debugInfo.textContent = tr('seedWriteFailed'); // ошибка записи
       }
     });
   }

@@ -3,10 +3,10 @@
   --ui-scale: 1;                 /* 0…2 — общий масштаб UI */
   --intro-top: 30vh;             /* верх плашки от окна */
   --page-bg: #000;               /* фон страницы */
-  --card-bg: #000;               /* фон плашки-описания */
+  --card-bg: #000000d0;               /* фон плашки-описания */
   --text-color: #fff;            /* общий цвет текста */
-  --text-muted: #9ca3af;         /* приглушённый текст */
-  --accent: #00ff00;             /* активные цифры */
+  --text-muted: #424242;         /* приглушённый текст */
+  --accent: #0044ff;             /* активные цифры */
 
   /* внутренняя обводка (стандартизированная для всех UI) */
   --stroke-color: #fff;
@@ -48,7 +48,8 @@
   /* тонкая подстройка кнопки языка от левого края intro-блока */
   --flag-left: -2px;
 
- --error-dusty-red: #e07b7b;   /* цвет текста ошибки */
+--error-dusty-red: #a93f3f;   /* цвет текста ошибки */
+--ok-text: var(--text-color); /* белый текст успеха по умолчанию */
 
 }
 /* =========================================== */
@@ -72,7 +73,7 @@ body{
   height:var(--contacts-h);
   background:#000; color:var(--text-color);
   font-size:var(--contacts-size);
-  font-weight:var(--font-weight);
+  font-weight:100;
   line-height:var(--contacts-h);
   text-align:center; z-index:1000;
 }
@@ -104,16 +105,16 @@ body{
 .flag-btn{
   position:absolute; left:var(--flag-left); bottom:100%;
   transform:translateY(2px);
-  background:#000; color:#fff; border:none;
-  padding:.5em 1em; font-weight:600; font-size:.9em; cursor:pointer;
+  background:#ffffff; color:#000000; border:none;
+  padding:.4em 1.2em; font-weight:400; font-size:.9em; cursor:pointer;
 }
-.flag-btn:hover{ background:#555 }
-.flag-btn:active{ background:#999 }
+.flag-btn:hover{ background:var(--btn-hover) }
+.flag-btn:active{ background:var(--btn-active); transform:scale(var(--btn-scale-active)) }
 
 /* плашка-интро */
 .card{
   background:var(--card-bg);
-  box-shadow: inset 0 0 0 var(--stroke-size) var(--stroke-color);
+  box-shadow: inset 0 0 0 none var(--stroke-color);
   border-radius:0; padding:16px;
 }
 .card .title{
@@ -169,14 +170,14 @@ button:focus-visible{
   height:var(--btn-h); padding:0 8px;
   font-family:var(--font-family); font-size:var(--input-font);
   font-weight:var(--font-weight);
-  color:#fff; background:#000; border:none;
+  color:#fff; background:#000; border: 1px  ;;
   box-shadow: inset 0 0 0 var(--stroke-size) var(--stroke-color);
   border-radius:0;
 }
 /* плейсхолдеры явно видимые */
 #birthInput::placeholder,
 #deathInput::placeholder{
-  color: rgba(255,255,255,.75);
+  color: rgba(174, 174, 174, 0.75);
   opacity: 1;                   /* Safari */
 }
 
@@ -189,7 +190,24 @@ button:focus-visible{
 
 /* статус/отладка */
 #status{ font-size:var(--text-size); color:var(--text-color); font-weight:var(--font-weight) }
-#debugInfo{ font-size:var(--text-size); color:var(--text-muted) }
+#debugInfo{
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;                           /* прижали к низу */
+  height: var(--contacts-h);
+  background: #000;                    /* как у contactsBar */
+  color: var(--text-color);
+  font-size: var(--contacts-size);
+  font-weight: var(--font-weight);
+  line-height: var(--contacts-h);
+  text-align: center;
+  z-index: 1000;
+  /* box-shadow: inset 0 0 0 var(--stroke-size) var(--stroke-color); */
+}
+
+
+
 
 /* поток дат */
 #stream{
@@ -203,18 +221,22 @@ button:focus-visible{
 
 
 /* Полоса ошибки внизу панели */
-#errorBar{
+#errorBar,
+#okBar{
  
   width: 100%;
-  margin-top: var(--stack-gap);
+margin-top: 0px;
   padding: 8px 12px;
-  background: #000;                         /* чёрная подложка */
-  color: var(--error-dusty-red);            /* пыльно-красный текст */
+  background: #000000cb;                         /* чёрная подложка */
   font-size: var(--text-size);              /* общий размер текста */
   font-weight: var(--font-weight);
   border-radius: 0;
   /* внутренняя стандартная обводка, чтобы стыки были ровными */
-  box-shadow: inset 0 0 0 var(--stroke-size) var(--stroke-color);
+  box-shadow: inset 0 0 0 none var(--stroke-color);
 }
 
+#errorBar{ color: var(--error-dusty-red); }
+#okBar{    color: var(--ok-text); }
+
 #errorBar[hidden]{ display: none !important; }
+#okBar[hidden]{ display: none !important; }

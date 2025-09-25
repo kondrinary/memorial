@@ -194,8 +194,21 @@
       if (cur){
         highlight(cur.span);
         OverlayFX?.pulseAtSpan(cur.span);
-        const debug = document.getElementById('debugInfo');
-        if (debug) debug.textContent = `Играет: ${cur.digit} → ${cur.freq.toFixed(2)} Гц (idx ${idxNow})`;
+
+        
+// локализованный вывод "Сейчас играет …"
+const _tr = (typeof window.tr === 'function') ? window.tr : (k)=>k;
+const line = `${_tr('nowPlaying')}: ${cur.digit} → ${cur.freq.toFixed(2)} ${_tr('hz')} (${_tr('idxLabel')} ${idxNow})`;
+
+// если есть глобальный setDebug — используем его; иначе пишем напрямую
+if (typeof window.setDebug === 'function') {
+  window.setDebug(line);
+} else {
+  const debug = document.getElementById('debugInfo');
+  if (debug) debug.textContent = line;
+}
+
+   
       }
       lastIdx = idxNow;
     }
