@@ -1,11 +1,40 @@
 // config.js — глобальные настройки проекта
+
+const ENABLE_SEED = false;   // true = показывать кнопку тестовой записи
+
+// язык по умолчанию
+let CURRENT_LANG = "ru";
+
+const TEXTS = {
+  ru: {
+    startBtn: "Старт",
+    birthInput: "Дата рождения (ДД.ММ.ГГГГ)",
+    deathInput: "Дата смерти (ДД.ММ.ГГГГ)",
+    projectTitle: "Название проекта",
+    introDesc: "Короткое описание проекта на стартовой странице (РУС).",
+    playDesc: "Описание проекта во время проигрывания дат (РУС).",
+    contacts: "КОНТАКТЫ: здесь будет твой текст (РУС)"
+  },
+  en: {
+    startBtn: "Start",
+    birthInput: "Date of birth (DD.MM.YYYY)",
+    deathInput: "Date of death (DD.MM.YYYY)",
+    projectTitle: "Project Title",
+    introDesc: "Short project description on the start page (ENG).",
+    playDesc: "Project description during playback (ENG).",
+    contacts: "CONTACTS: here will be your text (ENG)"
+  }
+};
+
+
+
 window.AppConfig = {
 
   // Визуальные отступы в правой ленте
   STREAM_SPACING: {
     ENABLED: true,      // включить случайный отступ после цифр и точек
-    MIN_CH: 0.4,        // минимум в ch
-    MAX_CH: 1.6,        // максимум в ch
+    MIN_CH: 0,        // минимум в ch
+    MAX_CH: 6,        // максимум в ch
     APPLY_TO: 'digits_and_dots', // 'digits_and_dots' | 'all'
     NEWLINE_AFTER_PAIR: true      // перенос строки после каждой пары дат
   },

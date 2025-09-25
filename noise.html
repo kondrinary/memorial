@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="ru">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Unicode Noise</title>
+<style>
+  html,body{margin:0;height:100%;background:#000;overflow:hidden}
+  canvas{display:block;width:100vw;height:100vh}
+</style>
+<canvas id="c"></canvas>
+<script>
+/* ===== ПАРАМЕТРЫ ===== */
+const SYMBOLS = ["·","˙","▏","▚","░","▜"]; // символы шума
+const CELL = 10;
+const FG = "#fff";
+const NOISE = 0.9;           // сила шума (0..1)
+const NOISE_SPEED = 0.2;     // скорость изменения
+const JITTER = 0.3;          // дрожание символов
+/* ===================== */
+
+const cv = document.getElementById('c');
+const ctx = cv.getContext('2d');
+let W,H,cols,rows,px;
+
+function resize(){
+  const dpr = Math.max(1, devicePixelRatio||1);
+  W = Math.floor(innerWidth*dpr);
+  H = Math.floor(innerHeight*dpr);
+  cv.width=W; cv.height=H;
+  cv.style.width=innerWidth+'px';
+  cv.style.height=innerHeight+'px';
+  px = CELL*dpr;
+  cols=Math.ceil(W/px);
+  rows=Math.ceil(H/px);
+  ctx.font = `${Math.floor(px)}px monospace`;
+  ctx.textAlign="center";
+  ctx.textBaseline="middle";
+}
+addEventListener('resize', resize, {passive:true}); resize();
+
+// простой детерминированный хэш
+function hash(i,j,k=0){
+  let n=(i*73856093)^(j*19349663)^(k*83492791);
+  n=(n<<13)^n;
+  return ((n*(n*n*15731+789221)+1376312589)>>>0)/4294967295;
+}
+
+function draw(tms){
+  const t = tms/1000;
+  ctx.fillStyle="#000";
+  ctx.fillRect(0,0,W,H);
+  ctx.fillStyle=FG;
+  const kt=Math.floor(t*NOISE_SPEED*60);
+
+  for(let j=0;j<rows;j++){
+    const y0=(j+0.5)*px, yn=y0/H;
+    for(let i=0;i<cols;i++){
+      const x0=(i+0.5)*px, xn=x0/W;
+
+      const v = hash(i,j,kt);
+      const idx = Math.floor(v*SYMBOLS.length);
+      const a = 0.4 + 0.6*v;
+
+      const jx=(hash(j,i,kt+7)-0.5)*JITTER*px;
+      const jy=(hash(i,j,kt+13)-0.5)*JITTER*px;
+
+      ctx.globalAlpha=a;
+      ctx.fillText(SYMBOLS[idx], x0+jx, y0+jy);
+    }
+  }
+  ctx.globalAlpha=1;
+  requestAnimationFrame(draw);
+}
+requestAnimationFrame(draw);
+</script>
+</html>

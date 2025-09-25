@@ -16,11 +16,24 @@
 
 <link rel="stylesheet" href="styles.css" />
 </head>
+
+
 <body>
+<!-- ПЛАШКА КОНТАКТЫ --> 
+<div id="contactsBar"></div>
+
+<!-- ПОКАЗЫВАЕМ ОГОНЬ/ШУМ НА ФОНЕ -->
+<iframe id="fireFrame" src="./fire.html" class="bg-flame"></iframe>
+<iframe id="noiseFrame" src="./noise.html" class="bg-flame" style="display:none"></iframe>
+
 
 <div id="left">
   <div class="left-inner">
-    <!-- Белая рамка с названием и текстом — показывается до и после старта -->
+
+    <!-- КНОПКА ЯЗЫКА над плашкой -->
+    <button id="langBtn" class="flag-btn">ENG</button>
+
+    <!-- Плашка-интро -->
     <div id="introBox" class="card">
       <h1 class="title">Название проекта</h1>
       <p class="desc">
@@ -28,9 +41,7 @@
       </p>
     </div>
 
-    <!-- КНОПКА ТЕСТОВОЙ ЗАПИСИ (видимость управляем из config.js → ENABLE_SEED) -->
-    <button id="seedBtn" type="button">Добавить тестовую запись</button>
-
+   
     <!-- Старт -->
     <button id="startBtn" type="button">Старт</button>
 
@@ -39,9 +50,19 @@
       <input id="birthInput" placeholder="Дата рождения (ДД.ММ.ГГГГ)" maxlength="10">
       <input id="deathInput" placeholder="Дата смерти (ДД.ММ.ГГГГ)" maxlength="10">
       <button id="addBtn" type="button">Добавить</button>
-      <div id="status"></div>
-      <div id="debugInfo">Ожидание старта…</div>
-    </div>
+
+    </div> 
+
+<!-- Полоса ошибки (скрыта) -->
+<div id="errorBar" role="alert" aria-live="polite" hidden></div>
+
+<div id="status"></div>
+    <div id="debugInfo">Ожидание старта…</div>
+    
+    
+    <!-- КНОПКА ТЕСТОВОЙ ЗАПИСИ (видимость управляем из config.js → ENABLE_SEED) -->
+    <button id="seedBtn" type="button">Добавить тестовую запись</button>
+
   </div>
 </div>
 
@@ -59,5 +80,17 @@
 <script src="player.js"></script>
 <script src="data.js"></script>
 <script src="main.js"></script>
+
+<script>
+document.getElementById('startBtn').addEventListener('click', () => {
+  // спрятать огонь
+  document.getElementById('fireFrame').style.display = "none";
+  // показать шум
+  document.getElementById('noiseFrame').style.display = "block";
+});
+</script>
+
+
+
 </body>
 </html>

@@ -12,6 +12,54 @@
   const seedBtn      = document.getElementById('seedBtn');
 
 
+  // ===== ERROR плашка подключение и проверка =====
+const errorBar = document.getElementById('errorBar');
+
+function showError(msg){
+  if (!errorBar) return;
+  errorBar.textContent = msg;
+  errorBar.hidden = false;   // показать
+}
+
+function clearError(){
+  if (!errorBar) return;
+  errorBar.hidden = true;    // спрятать
+  errorBar.textContent = '';
+}
+
+
+
+if (!ENABLE_SEED) {
+  const seedBtn = document.getElementById('seedBtn');
+  if (seedBtn) seedBtn.style.display = "none";
+}
+
+  function applyTexts() {
+  const t = TEXTS[CURRENT_LANG];
+
+
+
+  document.getElementById("startBtn").innerText = t.startBtn;
+  document.getElementById("birthInput").placeholder = t.birthInput;
+  document.getElementById("deathInput").placeholder = t.deathInput;
+  document.querySelector("#introBox .title").innerText = t.projectTitle;
+  document.querySelector("#introBox .desc").innerText = t.introDesc;
+  document.getElementById("status").innerText = ""; // сюда можно выводить описание на проигрывании
+
+  const contactsBar = document.getElementById("contactsBar");
+  if (contactsBar) contactsBar.innerText = t.contacts;  
+
+}
+
+const langBtn = document.getElementById("langBtn");
+if (langBtn){
+  langBtn.addEventListener("click", () => {
+    CURRENT_LANG = (CURRENT_LANG === "ru" ? "en" : "ru");
+    langBtn.innerText = (CURRENT_LANG === "ru" ? "ENG" : "РУС");
+    applyTexts();
+  });
+}
+
   
 
   // ===== Видимость seed-кнопки из config.js =====
@@ -42,7 +90,22 @@
   }
 
   // ====== КНОПКА «Старт» ======
-  startBtn.addEventListener('click', async ()=>{
+// при загрузке подтянуть тексты по текущему языку
+clearError();
+applyTexts();
+
+// переключение описания при старте
+startBtn.addEventListener('click', async ()=>{
+
+  clearError();
+  // поменять описание на «play» и переключить фон fire -> noise
+  document.querySelector("#introBox .desc").innerText = TEXTS[CURRENT_LANG].playDesc;
+  const fire = document.getElementById('fireFrame');
+  const noise = document.getElementById('noiseFrame');
+  if (fire) fire.style.display = 'none';
+  if (noise) noise.style.display = 'block';
+
+
     if (typeof Tone === 'undefined'){
       if (debugInfo) debugInfo.textContent = 'Tone.js не загрузился. Проверьте интернет.';
       return;
@@ -77,7 +140,7 @@
 
     // UI
     startBtn.style.display   = 'none';
-    formSection.style.display = 'block';
+    formSection.style.display = 'flex';
     if (debugInfo) debugInfo.textContent = 'Подписываюсь на базу…';
 
     // Подписка на базу
@@ -119,39 +182,41 @@ OverlayFX.init({
     });
   });
 
-  // ====== КНОПКА «Добавить» ======
-  addBtn.addEventListener('click', async ()=>{
-    const bStr = birthInput.value.trim();
-    const dStr = deathInput.value.trim();
+// ====== КНОПКА «Добавить» (с полосой ошибки) ======
+addBtn.addEventListener('click', async ()=>{
+  const bStr = birthInput.value.trim();
+  const dStr = deathInput.value.trim();
 
-    const bDate = parseValidDate(bStr);
-    const dDate = parseValidDate(dStr);
+  // прячем прошлую ошибку перед проверкой
+  clearError();
 
-    if (!bDate || !dDate){
-      statusEl.textContent = 'Ошибка: формат строго ДД.ММ.ГГГГ';
-      statusEl.style.color = 'red';
-      return;
-    }
-    if (dDate.getTime() < bDate.getTime()){
-      statusEl.textContent = 'Ошибка: дата смерти раньше даты рождения.';
-      statusEl.style.color = 'red';
-      return;
-    }
+  const bDate = parseValidDate(bStr);
+  const dDate = parseValidDate(dStr);
 
-    const bDigits = bStr.replace(/\D/g,'');
-    const dDigits = dStr.replace(/\D/g,'');
+  if (!bDate || !dDate){
+    showError('Ошибка: формат строго ДД.ММ.ГГГГ');
+    return;
+  }
+  if (dDate.getTime() < bDate.getTime()){
+    showError('Ошибка: дата смерти раньше даты рождения.');
+    return;
+  }
 
-    const ok = await Data.pushDate(bDigits, dDigits);
-    if (ok){
-      statusEl.textContent = 'Добавлено!';
-      statusEl.style.color = 'green';
-      birthInput.value = '';
-      deathInput.value = '';
-    } else {
-      statusEl.textContent = 'Ошибка записи. Проверьте соединение/Rules.';
-      statusEl.style.color = 'red';
-    }
-  });
+  const bDigits = bStr.replace(/\D/g,'');
+  const dDigits = dStr.replace(/\D/g,'');
+
+  const ok = await Data.pushDate(bDigits, dDigits);
+  if (ok){
+    // успех → прячем ошибку и чистим поля
+    clearError();
+    birthInput.value = '';
+    deathInput.value = '';
+    // статус можно не трогать (пусть остаётся описанием воспроизведения)
+  } else {
+    showError('Ошибка записи. Проверьте соединение/Rules.');
+  }
+});
+
 
   // ====== КНОПКА «Тестовая запись» ======
   const SEED_PRESETS = [

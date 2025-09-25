@@ -1,143 +1,220 @@
-/* ===== ТЕМА ===== */
+/* ========== НАСТРОЙКИ (меняй тут) ========== */
 :root{
-  --bg: #000;         /* фон */
-  --fg: #fff;         /* текст */
-  --muted:#9ca3af;    /* серый */
-  --line:#fff;        /* белые линии/обводки */
-  --btn-bg:#fff;      /* фон кнопки */
-  --btn-fg:#000;      /* текст на кнопке */
-  --btn-hover:#e6e6e6;
-  --btn-active:#cfcfcf;
-  --focus:#9ca3af;
-  --green:#00ff00;    /* подсветка цифры */
-}
+  --ui-scale: 1;                 /* 0…2 — общий масштаб UI */
+  --intro-top: 30vh;             /* верх плашки от окна */
+  --page-bg: #000;               /* фон страницы */
+  --card-bg: #000;               /* фон плашки-описания */
+  --text-color: #fff;            /* общий цвет текста */
+  --text-muted: #9ca3af;         /* приглушённый текст */
+  --accent: #00ff00;             /* активные цифры */
 
-*{box-sizing:border-box}
-html,body{height:100%}
+  /* внутренняя обводка (стандартизированная для всех UI) */
+  --stroke-color: #fff;
+  --stroke-size: 1px;
+
+  /* шрифт (Google Fonts — раскомментируй при необходимости) */
+  /* @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap'); */
+  --font-family: "Inter", "Helvetica Neue", Arial, Helvetica, sans-serif;
+
+  /* размеры шрифтов */
+  --text-size:    calc(14px * var(--ui-scale));  /* описание/кнопки/общий текст */
+  --title-size:   calc(20px * var(--ui-scale));  /* заголовок проекта */
+  --contacts-size:calc(14px * var(--ui-scale));  /* верхняя строка «Контакты» */
+  --input-font:   calc(14px * var(--ui-scale));  /* шрифт инпутов */
+
+  /* веса шрифтов */
+  --font-weight: 400;            /* общий вес текста/кнопок/форм/контактов */
+  --title-weight: 600;           /* вес заголовка */
+
+  /* габариты панели/отступы */
+  --panel-maxw: calc(560px * var(--ui-scale));
+  --stack-gap:  calc(12px * var(--ui-scale));
+  --row-gap:    calc(10px * var(--ui-scale));
+
+  /* кнопки (кроме кнопки языка) */
+  --btn-bg:  #fff;
+  --btn-fg:  #000;
+  --btn-h:   calc(34px * var(--ui-scale));
+  --btn-pad-x: calc(14px * var(--ui-scale));
+  --btn-radius: 0px;
+  --start-w: calc(140px * var(--ui-scale));
+  --btn-hover: #e6e6e6;
+  --btn-active:#cfcfcf;
+  --btn-scale-active: .985;
+
+  /* верхняя плашка «Контакты» */
+  --contacts-h: 20px;
+
+  /* тонкая подстройка кнопки языка от левого края intro-блока */
+  --flag-left: -2px;
+
+ --error-dusty-red: #e07b7b;   /* цвет текста ошибки */
+
+}
+/* =========================================== */
+
+/* базовые */
+*{ box-sizing:border-box }
+html,body{ height:100% }
 body{
   margin:0;
-  background:var(--bg);
-  color:var(--fg);
-  font-family:"Helvetica Neue", Helvetica, Arial, sans-serif;
-  display:flex;
-  height:100vh;            /* фиксируем высоту окна */
-  overflow:hidden;         /* чтобы скроллился только правый поток */
+  background:var(--page-bg);
+  color:var(--text-color);
+  font-family:var(--font-family);
+  font-size:var(--text-size);
+  font-weight:var(--font-weight);
+  display:flex; height:100vh; overflow:hidden;
 }
 
-/* ===== ЛЕВАЯ/ПРАВАЯ КОЛОНКИ ===== */
-#left, #right{height:100vh}
+/* верхняя плашка «Контакты» */
+#contactsBar{
+  position:fixed; top:0; left:0; width:100%;
+  height:var(--contacts-h);
+  background:#000; color:var(--text-color);
+  font-size:var(--contacts-size);
+  font-weight:var(--font-weight);
+  line-height:var(--contacts-h);
+  text-align:center; z-index:1000;
+}
+
+/* фон (ифреймы) */
+.bg-flame{
+  position:fixed; inset:0; width:100%; height:100%;
+  border:0; background:transparent; z-index:2; pointer-events:none;
+}
+
+/* колонки */
+#left,#right{ height:100vh }
 #left{
-  width:30%;               /* 30% слева */
-  min-width:280px;
-  padding:24px;
-  position:sticky;
-  top:0;
-  display:flex;
-  align-items:flex-start;  /* контент по левому краю */
-  justify-content:center;  /* центрируем по вертикали через .left-inner */
-  overflow:auto;           /* если текста много — свой скролл */
-  border-right:1px solid rgba(255,255,255,.08);
+  position:fixed; inset:0; z-index:20;
+  display:flex; align-items:flex-start; justify-content:center;
+  padding:24px; background:transparent; pointer-events:none;
 }
 .left-inner{
-  width:100%;
-  max-width:420px;         /* аккуратная ширина колонки */
-  display:flex;
-  flex-direction:column;
-  gap:14px;
+  position:relative; width:100%; max-width:var(--panel-maxw);
+  margin-top:var(--intro-top);
+  display:flex; flex-direction:column; gap:var(--stack-gap);
+  pointer-events:auto;
 }
-
 #right{
-  width:70%;               /* 70% справа */
-  padding:24px;
-  overflow:auto;           /* отдельный скролл потока */
-  font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
-  font-size:18px;
-  line-height:1.5;
+  position:fixed; inset:0; z-index:10; padding:24px; overflow:auto;
 }
 
-/* ===== КАРТОЧКА-ИНТРО (белая рамка) ===== */
+/* кнопка языка (оставляем как была) */
+.flag-btn{
+  position:absolute; left:var(--flag-left); bottom:100%;
+  transform:translateY(2px);
+  background:#000; color:#fff; border:none;
+  padding:.5em 1em; font-weight:600; font-size:.9em; cursor:pointer;
+}
+.flag-btn:hover{ background:#555 }
+.flag-btn:active{ background:#999 }
+
+/* плашка-интро */
 .card{
-  border:1.5px solid var(--line);
-  padding:16px;
-  border-radius:0;         /* прямоугольная */
+  background:var(--card-bg);
+  box-shadow: inset 0 0 0 var(--stroke-size) var(--stroke-color);
+  border-radius:0; padding:16px;
 }
 .card .title{
-  margin:0 0 6px 0;
-  font-size:20px;
-  font-weight:600;
+  margin:0 0 6px 0; color:var(--text-color);
+  font-size:var(--title-size); font-weight:var(--title-weight);
 }
 .card .desc{
-  margin:0;
-  color:#e5e7eb;
-  font-size:14px;
+  margin:0; color:var(--text-color);
+  font-size:var(--text-size); font-weight:var(--font-weight);
   line-height:1.5;
 }
 
-/* ===== КНОПКИ ===== */
+/* общие кнопки (кроме флага) */
 button{
-  appearance:none;
-  border:none;
-  border-radius:0;
-  background:var(--btn-bg);
-  color:var(--btn-fg);
-  padding:12px 18px;
-  font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
-  font-size:16px;
-  font-weight:400;
-  letter-spacing:.01em;
+  appearance:none; border:none; border-radius:var(--btn-radius);
+  background:var(--btn-bg); color:var(--btn-fg);
+  font-family:var(--font-family); font-size:var(--text-size);
+  font-weight:var(--font-weight);
   cursor:pointer;
-  transition:background-color .15s ease, transform .02s ease;
+  box-shadow: inset 0 0 0 var(--stroke-size) var(--stroke-color);
+  transition: background-color .15s ease, transform .06s ease;
 }
-button:hover{ background:var(--btn-hover); }
-button:active{ background:var(--btn-active); transform:translateY(1px); }
-button:focus-visible{ outline:2px solid var(--focus); outline-offset:2px; }
+button:hover{ background:var(--btn-hover) }
+button:active{ background:var(--btn-active); transform:scale(var(--btn-scale-active)) }
+button:focus{ outline:none }
+button:focus-visible{
+  box-shadow:
+    inset 0 0 0 var(--stroke-size) var(--stroke-color),
+    0 0 0 2px rgba(255,255,255,.18);
+}
 
-/* Кнопка тестовой записи — обычная, просто отступ */
-#seedBtn{ margin-top:2px; }
+/* «Старт» — справа, уже */
+#startBtn{
+  display:block; width:var(--start-w);
+  height:var(--btn-h); line-height:var(--btn-h);
+  padding:0 var(--btn-pad-x);
+  margin-left:auto;
+}
 
-/* ===== ФОРМА ===== */
+/* форма (скрыта до старта) */
 #formSection{
-  display:none;            /* показывается после старта */
+  display:none;                 /* включаем из JS как flex */
+  flex-direction:row;
+  align-items:stretch;
+  gap:var(--row-gap);
   width:100%;
+  flex-wrap:nowrap;             /* не переносить */
 }
-input{
-  width:100%;
-  margin-bottom:12px;
-  padding:12px;
-  font-size:16px;
-  letter-spacing:.02em;
-  background:#000;         /* чёрная внутри */
-  color:#fff;
-  border:1.5px solid var(--line);  /* белая обводка */
+
+/* поля ввода */
+#birthInput,#deathInput{
+  flex:1 1 0; min-width:0;      /* позволяем сжиматься, чтобы «Добавить» не падала */
+  height:var(--btn-h); padding:0 8px;
+  font-family:var(--font-family); font-size:var(--input-font);
+  font-weight:var(--font-weight);
+  color:#fff; background:#000; border:none;
+  box-shadow: inset 0 0 0 var(--stroke-size) var(--stroke-color);
   border-radius:0;
-  outline:none;
 }
-input::placeholder{ color:var(--muted); }
-input:focus{ border-color:var(--fg); box-shadow:0 0 0 2px rgba(255,255,255,.12); }
+/* плейсхолдеры явно видимые */
+#birthInput::placeholder,
+#deathInput::placeholder{
+  color: rgba(255,255,255,.75);
+  opacity: 1;                   /* Safari */
+}
 
-#status{ margin-top:2px; font-size:14px; color:#e5e7eb; }
-#debugInfo{ margin-top:8px; font-size:12px; color:#9ca3af; }
+/* кнопка «Добавить» — в одной линии справа */
+#addBtn{
+  flex:0 0 auto; height:var(--btn-h);
+  padding:0 var(--btn-pad-x);
+  border-radius:0; white-space:nowrap; /* текст не переносится */
+}
 
-/* ===== ПРАВЫЙ ПОТОК ДАТ ===== */
+/* статус/отладка */
+#status{ font-size:var(--text-size); color:var(--text-color); font-weight:var(--font-weight) }
+#debugInfo{ font-size:var(--text-size); color:var(--text-muted) }
+
+/* поток дат */
 #stream{
-  white-space:pre-wrap;    /* перенос по словам/точкам */
-  word-break:break-word;   /* переносим длинные куски */
-  
- text-align: center;   
+  max-width:100%; margin:0 auto; text-align:center;
+  white-space:pre-wrap; word-break:break-word; color:var(--text-color);
+  font-weight:var(--font-weight);
+}
+#stream .digit{ color:var(--text-color) }
+#stream .digit.active{ color:var(--accent) }
 
-  
-}
-#stream .digit{ color:#fff; transition:color .1s ease; }
-#stream .digit.active{ color:var(--green); font-weight:700; }
 
-/* ===== АДАПТИВ ===== */
-@media (max-width: 960px){
-  body{ flex-direction:column; height:100%; }
-  #left, #right{ width:100%; height:auto; }
-  #left{ position:relative; border-right:none; border-bottom:1px solid rgba(255,255,255,.08); }
-  #right{ height:55vh; }          /* поток занимает ~полэкрана */
+
+/* Полоса ошибки внизу панели */
+#errorBar{
+ 
+  width: 100%;
+  margin-top: var(--stack-gap);
+  padding: 8px 12px;
+  background: #000;                         /* чёрная подложка */
+  color: var(--error-dusty-red);            /* пыльно-красный текст */
+  font-size: var(--text-size);              /* общий размер текста */
+  font-weight: var(--font-weight);
+  border-radius: 0;
+  /* внутренняя стандартная обводка, чтобы стыки были ровными */
+  box-shadow: inset 0 0 0 var(--stroke-size) var(--stroke-color);
 }
-@media (max-width: 420px){
-  .left-inner{ max-width:100%; }
-  #right{ padding:16px; }
-}
+
+#errorBar[hidden]{ display: none !important; }
