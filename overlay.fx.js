@@ -1,171 +1,99 @@
-// overlay.fx.js — ТОЛЬКО вспышка над активной цифрой (без шума/виньетки/backdrop-blur).
-// Шлейф реализован через destination-out (прозрачное «выцветание»), поэтому слой не чернит фон.
-//
-// API:
-//   OverlayFX.init({ rootEl?, blurPx?, blendMode?, trailAlpha? })
+// overlay.fx.js — инвертирующая подсветка активной строки (mix-blend-mode:difference)
+// Минимализм: 1 div, без канваса/фильтров. Слой ВСЕГДА поверх цифр.
+// API: 
+//   OverlayFX.init({ rootEl?, heightFactor? })
 //   OverlayFX.pulseAtSpan(span)
-//   OverlayFX.setPulseBlur(px)
-//   OverlayFX.setBlend(mode)      // 'screen'|'lighter' обычно best
-//   OverlayFX.setTrail(alpha)     // 0..1; 0 = без шлейфа
+//   OverlayFX.setHeightFactor(k)
+//
+// Примечание: инверсия работает внутри контейнера, поэтому задаём isolation:isolate.
 
 (function () {
   const CFG = {
-    BLUR_PX: 6,          // размытие ТОЛЬКО у вспышки (px)
-    TRAIL_ALPHA: 0.10,   // сила выцветания (0..1); 0 = чистый clearRect
-    LIFE_MS: 480,        // длительность вспышки (мс)
-    R0_FACTOR: 0.7,      // стартовый радиус (в долях от размера символа)
-    R1_FACTOR: 3.6,      // конечный радиус
-    BLEND_MODE: 'screen',// как смешивать канвас с фоном ('screen'/'lighter' — не темнят)
-    COLORS: {
-      inner: 'rgba(255,255,255,0.90)',
-      mid:   'rgba(80,200,255,0.60)',
-      outer: 'rgba(0,0,0,0.00)'
-    }
+    H_FACTOR: 1.22,   // высота бара в долях высоты строки
+    SNAP_EPS: 0.45    // не двигаем бар, если смещение меньше этой доли высоты строки
   };
 
-  const OverlayFX = {};
-  let root, wrap, cvs, ctx;
-  let pulses = [];
-  let running = false;
+  let root, wrap, bar;
+  let lastTop = null, lastH = null;
 
   function ensureNodes() {
     if (wrap) return;
+
     wrap = document.createElement('div');
-    wrap.style.position = 'absolute';
-    wrap.style.inset = '0';
-    wrap.style.pointerEvents = 'none';
-    wrap.style.zIndex = '10';
-    // НИЧЕГО лишнего: нет background-активаторов, backdrop-filter и т.п.
+    Object.assign(wrap.style, {
+      position: 'absolute',
+      inset: '0',
+      pointerEvents: 'none',
+      zIndex: '10'
+    });
 
-    cvs = document.createElement('canvas');
-    cvs.style.position = 'absolute';
-    cvs.style.inset = '0';
-    cvs.style.pointerEvents = 'none';
-    cvs.style.mixBlendMode = CFG.BLEND_MODE; // влияет на то, как вспышка ляжет на цифры
+    bar = document.createElement('div');
+    Object.assign(bar.style, {
+      position: 'absolute',
+      left: '0',
+      right: '0',
+      height: '0px',
+      transform: 'translateY(0)',
+      transition: 'transform 140ms ease-out, height 140ms ease-out',
+      willChange: 'transform,height',
+      background: '#ffffff3b',
+      mixBlendMode: 'difference'
+    });
 
-    wrap.appendChild(cvs);
-    // гарантируем контекст позиционирования
-    root.style.position = root.style.position || 'relative';
+    wrap.appendChild(bar);
+
+    // гарантируем контекст позиционирования и ограничим область смешения
+    if (getComputedStyle(root).position === 'static') root.style.position = 'relative';
+    root.style.isolation = 'isolate';
+
     root.appendChild(wrap);
-
-    ctx = cvs.getContext('2d');
+    window.addEventListener('resize', () => reposition());
   }
 
-  function resize() {
-    if (!root || !cvs) return;
-    const r = root.getBoundingClientRect();
-    const dpr = window.devicePixelRatio || 1;
-    cvs.width = Math.max(1, Math.round(r.width * dpr));
-    cvs.height = Math.max(1, Math.round(r.height * dpr));
-    cvs.style.width = r.width + 'px';
-    cvs.style.height = r.height + 'px';
-    // Рисуем в CSS-пикселях
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  function relTop(rect, rootRect) {
+    return rect.top - rootRect.top;
   }
 
-  function tick() {
-    if (!running) return;
-    requestAnimationFrame(tick);
-
-    const w = cvs.clientWidth, h = cvs.clientHeight;
-
-    if (CFG.TRAIL_ALPHA <= 0) {
-      // Полное очищение — без шлейфа.
-      ctx.clearRect(0, 0, w, h);
-    } else {
-      // Правильный шлейф: делаем контент полупрозрачнее, а НЕ красим чёрным.
-      ctx.save();
-      ctx.globalCompositeOperation = 'destination-out';
-      // Альфа определяет, насколько быстро «выцветают» предыдущие пиксели.
-      ctx.fillStyle = `rgba(0,0,0,${CFG.TRAIL_ALPHA})`;
-      ctx.fillRect(0, 0, w, h);
-      ctx.restore();
-    }
-
-    drawPulses();
+  function reposition(top = lastTop, h = lastH) {
+    if (top == null || h == null) return;
+    const pad = (h * (CFG.H_FACTOR - 1)) / 2;
+    const y = Math.round(top - pad);
+    const HH = Math.round(h * CFG.H_FACTOR);
+    bar.style.height = HH + 'px';
+    bar.style.transform = `translateY(${y}px)`;
   }
 
-  function drawPulses() {
-    const now = performance.now();
-    pulses = pulses.filter(p => now - p.start < p.life);
+  const OverlayFX = {};
 
-    for (const p of pulses) {
-      const k = (now - p.start) / p.life;   // 0..1
-      const r = p.r0 + (p.r1 - p.r0) * k;
-      const a = p.a0 * (1 - k);
-
-      const grad = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, r);
-      grad.addColorStop(0.00, rgbaWithAlpha(CFG.COLORS.inner, a));
-      grad.addColorStop(0.35, rgbaWithAlpha(CFG.COLORS.mid, a * 0.7));
-      grad.addColorStop(1.00, CFG.COLORS.outer);
-
-      ctx.save();
-      ctx.filter = CFG.BLUR_PX > 0 ? `blur(${CFG.BLUR_PX}px)` : 'none'; // размытие ТОЛЬКО у вспышки
-      ctx.globalCompositeOperation = 'lighter';
-      ctx.fillStyle = grad;
-      ctx.beginPath();
-      ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.restore();
-    }
-    // Возвращаем стандартную композицию для следующих операций
-    ctx.globalCompositeOperation = 'source-over';
-  }
-
-  function rgbaWithAlpha(col, alpha) {
-    if (/rgba\(/i.test(col)) {
-      return col.replace(/rgba\(([^)]+)\)/i, (_, inside) => {
-        const parts = inside.split(',').map(s => s.trim());
-        parts[3] = String(alpha);
-        return `rgba(${parts.join(',')})`;
-      });
-    }
-    if (/rgb\(/i.test(col)) {
-      return col.replace(/rgb\(([^)]+)\)/i, (_, inside) => `rgba(${inside},${alpha})`);
-    }
-    return col;
-  }
-
-  // === Публичный API ===
   OverlayFX.init = function (opts = {}) {
     root = opts.rootEl || document.getElementById('stream');
     if (!root) return;
-
-    if (typeof opts.blurPx === 'number')     CFG.BLUR_PX = Math.max(0, opts.blurPx|0);
-    if (typeof opts.trailAlpha === 'number') CFG.TRAIL_ALPHA = Math.max(0, Math.min(1, opts.trailAlpha));
-    if (typeof opts.blendMode === 'string')  CFG.BLEND_MODE = opts.blendMode;
-
+    if (typeof opts.heightFactor === 'number') {
+      CFG.H_FACTOR = Math.max(1, opts.heightFactor);
+    }
     ensureNodes();
-    cvs.style.mixBlendMode = CFG.BLEND_MODE;
-    resize();
-
-    pulses.length = 0;
-    running = true;
-    requestAnimationFrame(tick);
-    window.addEventListener('resize', resize);
+    lastTop = lastH = null;
   };
 
   OverlayFX.pulseAtSpan = function (span) {
-    if (!span || !wrap) return;
-    const rRoot = root.getBoundingClientRect();
-    const r = span.getBoundingClientRect();
-    const x = (r.left + r.right) * 0.5 - rRoot.left;
-    const y = (r.top + r.bottom) * 0.5 - rRoot.top;
-    const size = Math.max(r.width, r.height) || 12;
+    if (!span || !root) return;
+    const rr = root.getBoundingClientRect();
+    const r  = span.getBoundingClientRect();
+    const top = relTop(r, rr);
+    const h   = r.height || 12;
 
-    pulses.push({
-      x, y,
-      start: performance.now(),
-      life: CFG.LIFE_MS,
-      r0: size * CFG.R0_FACTOR,
-      r1: size * CFG.R1_FACTOR,
-      a0: 1.0
-    });
+    // двигаем только при смене строки
+    if (lastTop != null && Math.abs(top - lastTop) < h * CFG.SNAP_EPS) return;
+
+    lastTop = top;
+    lastH   = h;
+    reposition(top, h);
   };
 
-  OverlayFX.setPulseBlur = (px)=> { CFG.BLUR_PX = Math.max(0, px|0); };
-  OverlayFX.setBlend     = (m)=> { CFG.BLEND_MODE = m || 'screen'; if (cvs) cvs.style.mixBlendMode = CFG.BLEND_MODE; };
-  OverlayFX.setTrail     = (a)=> { CFG.TRAIL_ALPHA = Math.max(0, Math.min(1, a)); };
+  OverlayFX.setHeightFactor = (k) => {
+    CFG.H_FACTOR = Math.max(1, k || CFG.H_FACTOR);
+    reposition();
+  };
 
   window.OverlayFX = OverlayFX;
 })();

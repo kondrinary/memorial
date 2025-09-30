@@ -70,8 +70,14 @@ function renderPairToFragment(item){
   for (const ch of text){
     const s = document.createElement('span');
     s.textContent = ch;
+
+
+    if (ch === '.') s.dataset.char = '.';   // помечаем только точки
+
     if (/\d/.test(ch)) s.classList.add('digit');
     applyRandomGap(s, ch, item.id, i++);  // ← случайный CSS-отступ в ch
+
+    
     frag.appendChild(s);
     spans.push(s);
   }

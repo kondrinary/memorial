@@ -6,15 +6,22 @@
   --card-bg: #000000d0;               /* фон плашки-описания */
   --text-color: #fff;            /* общий цвет текста */
   --text-muted: #424242;         /* приглушённый текст */
-  --accent: #0044ff;             /* активные цифры */
+  --stream: #ffffff;  
+  --accent: #2f47ff;             /* активные цифры */
 
   /* внутренняя обводка (стандартизированная для всех UI) */
   --stroke-color: #fff;
   --stroke-size: 1px;
 
-  /* шрифт (Google Fonts — раскомментируй при необходимости) */
-  /* @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap'); */
-  --font-family: "Inter", "Helvetica Neue", Arial, Helvetica, sans-serif;
+  /* шрифт */
+  --font-ui: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, "Cascadia Code", Menlo, Consolas, monospace;
+  
+  /* общий шаг между символами даты */
+  --char-gap: 1%;
+  /* интервалы вокруг точки (до и после) */
+  --dot-gap-before: 2%;
+  --dot-gap-after: 2%;
 
   /* размеры шрифтов */
   --text-size:    calc(14px * var(--ui-scale));  /* описание/кнопки/общий текст */
@@ -27,7 +34,7 @@
   --title-weight: 600;           /* вес заголовка */
 
   /* габариты панели/отступы */
-  --panel-maxw: calc(560px * var(--ui-scale));
+  --panel-maxw: calc(800px * var(--ui-scale));
   --stack-gap:  calc(12px * var(--ui-scale));
   --row-gap:    calc(10px * var(--ui-scale));
 
@@ -42,15 +49,28 @@
   --btn-active:#cfcfcf;
   --btn-scale-active: .985;
 
-  /* верхняя плашка «Контакты» */
+  /* верхняя плашка  */
   --contacts-h: 20px;
 
-  /* тонкая подстройка кнопки языка от левого края intro-блока */
-  --flag-left: -2px;
+  /* нижняя плашка  */
+  --bottom-panel-h: 30vh;     /* высота нижней фиксированнной панели */
+  --bottom-panel-bg: #000;    /* цвет фона панели */
 
---error-dusty-red: #a93f3f;   /* цвет текста ошибки */
---ok-text: var(--text-color); /* белый текст успеха по умолчанию */
+  --error-dusty-red: #a93f3f;   /* цвет текста ошибки */
+  --ok-text: var(--text-color); /* белый текст успеха по умолчанию */
 
+  --flag-top: 12px;          /* отступ кнопки языка от верха */
+  --flag-right: 12px;        /* отступ кнопки языка от правого края */
+
+  --brand-top: 12px;         /* «МЕМОРИАЛ» — отступ сверху */
+  --brand-left: 16px;        /* «МЕМОРИАЛ» — отступ слева */
+
+  --desc-lh: 1;              /* межстрочный у описания (меняешь тут) */
+  --card-pad-x: 0px;         /* паддинги описания слева/справа */
+  --card-pad-y: 10px;        /* паддинги описания сверху/снизу */
+
+  --contacts-wrap-lh: 1;     /* межстрочный у контактов на узких экранах */
+  --contacts-extra-pad: 56px;/* запас под авто-перенос контактов (см. #right) */
 }
 /* =========================================== */
 
@@ -61,21 +81,16 @@ body{
   margin:0;
   background:var(--page-bg);
   color:var(--text-color);
-  font-family:var(--font-family);
   font-size:var(--text-size);
   font-weight:var(--font-weight);
   display:flex; height:100vh; overflow:hidden;
 }
 
-/* верхняя плашка «Контакты» */
-#contactsBar{
-  position:fixed; top:0; left:0; width:100%;
-  height:var(--contacts-h);
-  background:#000; color:var(--text-color);
-  font-size:var(--contacts-size);
-  font-weight:100;
-  line-height:var(--contacts-h);
-  text-align:center; z-index:1000;
+/* Включаем табличные цифры и линейные формы везде, где есть текст/цифры */
+html, body {
+  font-family: var(--font-ui);
+  font-feature-settings: "tnum" 1, "lnum" 1;      /* на случай, если попадётся не-моновариант */
+  font-variant-numeric: tabular-nums lining-nums; /* кроссбраузерно активируем табличные цифры */
 }
 
 /* фон (ифреймы) */
@@ -86,36 +101,73 @@ body{
 
 /* колонки */
 #left,#right{ height:100vh }
+
+/* НИЖНЯЯ ПАНЕЛЬ (бывш. #left) */
 #left{
-  position:fixed; inset:0; z-index:20;
-  display:flex; align-items:flex-start; justify-content:center;
-  padding:24px; background:transparent; pointer-events:none;
-}
-.left-inner{
-  position:relative; width:100%; max-width:var(--panel-maxw);
-  margin-top:var(--intro-top);
-  display:flex; flex-direction:column; gap:var(--stack-gap);
-  pointer-events:auto;
-}
-#right{
-  position:fixed; inset:0; z-index:10; padding:24px; overflow:auto;
+  position: fixed;
+  left: 0; right: 0; bottom: 0;
+  height: var(--bottom-panel-h);
+  z-index: 900;                
+  background: var(--bottom-panel-bg);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 24px;              
+  pointer-events: auto;
 }
 
-/* кнопка языка (оставляем как была) */
+/* NEW: .left-inner — grid с 2 колонками:
+   кол.1 — контент (.card), кол.2 — узкая колонка под кнопку «Подключиться».
+   Когда формы видимы, #formSection занимает верхнюю строку на обе колонки. */
+.left-inner{
+  position: relative;
+  width: 100%;
+  max-width: var(--panel-maxw);
+  margin-top: 0;
+  display: grid;                       /* NEW */
+  grid-template-columns: 1fr auto;     /* NEW */
+  grid-auto-rows: min-content;         /* NEW */
+  align-items: start;                  /* NEW */
+  row-gap: var(--stack-gap);           /* NEW */
+  column-gap: 0;                       /* NEW: встык к кнопке */
+  pointer-events: auto;
+  height: 100%;
+  overflow: auto;                      /* скролл внутри панели */
+}
+
+#right{
+  position: fixed; inset: 0;
+  z-index: 10;                 /* ниже нижней панели */
+  padding: 24px;
+  padding-bottom: calc(var(--bottom-panel-h) + var(--contacts-extra-pad));
+  overflow: auto;
+}
+
+/* кнопка языка  */
 .flag-btn{
-  position:absolute; left:var(--flag-left); bottom:100%;
-  transform:translateY(2px);
+  position: fixed;             
+  top: var(--flag-top);
+  right: var(--flag-right);
+  z-index: 1100;
   background:#ffffff; color:#000000; border:none;
   padding:.4em 1.2em; font-weight:400; font-size:.9em; cursor:pointer;
 }
 .flag-btn:hover{ background:var(--btn-hover) }
 .flag-btn:active{ background:var(--btn-active); transform:scale(var(--btn-scale-active)) }
 
-/* плашка-интро */
+/* плашка-интро (описание) */
 .card{
   background:var(--card-bg);
   box-shadow: inset 0 0 0 none var(--stroke-color);
-  border-radius:0; padding:16px;
+  border-radius:0; 
+  padding: var(--card-pad-y) var(--card-pad-x);
+  grid-column: 1;              /* NEW: слева */
+  /* NEW: внутри .card делаем "тайтл | описание" в одну строку по верху */
+  display: grid;               /* NEW */
+  grid-auto-flow: column;      /* NEW */
+  grid-template-columns: auto 1fr; /* NEW: [title] [desc] */
+  align-items: start;          /* NEW */
+  column-gap: var(--stack-gap);/* NEW */
 }
 .card .title{
   margin:0 0 6px 0; color:var(--text-color);
@@ -124,7 +176,7 @@ body{
 .card .desc{
   margin:0; color:var(--text-color);
   font-size:var(--text-size); font-weight:var(--font-weight);
-  line-height:1.5;
+  line-height:var(--desc-lh);
 }
 
 /* общие кнопки (кроме флага) */
@@ -146,22 +198,34 @@ button:focus-visible{
     0 0 0 2px rgba(255,255,255,.18);
 }
 
-/* «Старт» — справа, уже */
+/* «Подключиться»: в ПРАВОЙ колонке той же строки, что и .card */
 #startBtn{
   display:block; width:var(--start-w);
   height:var(--btn-h); line-height:var(--btn-h);
   padding:0 var(--btn-pad-x);
-  margin-left:auto;
+  margin:0;                     /* NEW: без внешних отступов */
+  position: static; top: auto; z-index: auto;
+  grid-column: 2;               /* NEW: правая колонка */
+  align-self: start;            /* NEW: по верхнему краю */
+  justify-self: start;          /* NEW: встык к .card */
 }
 
-/* форма (скрыта до старта) */
+/* форма (скрыта до старта) — при показе занимает ВЕРХНИЙ РЯД на всю ширину
+   и прилипает к верхнему краю панели */
 #formSection{
-  display:none;                 /* включаем из JS как flex */
+  display:none;                 /* включит main.js после старта */
   flex-direction:row;
   align-items:stretch;
   gap:var(--row-gap);
   width:100%;
-  flex-wrap:nowrap;             /* не переносить */
+  flex-wrap:nowrap;
+  grid-column: 1 / -1;          /* NEW: занять обе колонки сверху */
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--bottom-panel-bg); /* не просвечивать при скролле */
+  padding-top: 0;
+  padding-bottom: var(--stack-gap);
 }
 
 /* поля ввода */
@@ -186,6 +250,7 @@ button:focus-visible{
   flex:0 0 auto; height:var(--btn-h);
   padding:0 var(--btn-pad-x);
   border-radius:0; white-space:nowrap; /* текст не переносится */
+  margin-left: auto;            /* прижать к правому краю формы */
 }
 
 /* статус/отладка */
@@ -194,9 +259,9 @@ button:focus-visible{
   position: fixed;
   left: 0;
   right: 0;
-  bottom: 0;                           /* прижали к низу */
+  top: 0;                          
   height: var(--contacts-h);
-  background: #000;                    /* как у contactsBar */
+  background: #000;                   
   color: var(--text-color);
   font-size: var(--contacts-size);
   font-weight: var(--font-weight);
@@ -206,37 +271,56 @@ button:focus-visible{
   /* box-shadow: inset 0 0 0 var(--stroke-size) var(--stroke-color); */
 }
 
-
-
+/* плашка «Контакты» */
+#contactsBar{
+  position: fixed;
+  left: 0; right: 0;                 
+  bottom: 0;                          /* остаётся над нижней панелью */
+  min-height: var(--contacts-h);      /* вместо жёсткой height */
+  height: auto;
+  padding: 4px 12px;
+  background: #000;
+  color: var(--text-color);
+  font-size: var(--contacts-size);
+  font-weight: 100;
+  line-height: var(--contacts-wrap-lh); /* переменная для переносов */
+  text-align: center;
+  white-space: normal;                /* разрешаем перенос */
+  word-break: break-word;
+  z-index: 950;              
+}
 
 /* поток дат */
 #stream{
   max-width:100%; margin:0 auto; text-align:center;
-  white-space:pre-wrap; word-break:break-word; color:var(--text-color);
+  white-space:nowrap; word-break:keep-all; color:var(--text-color);
+  overflow-x:auto; /* если не влезет — горизонтальный скролл, а не перенос */
   font-weight:var(--font-weight);
 }
-#stream .digit{ color:var(--text-color) }
+#stream .digit{ color:var(--stream); display:inline-block; padding-right: var(--char-gap); }
 #stream .digit.active{ color:var(--accent) }
 
-
+/* СПЕЦ. ПРАВИЛА ДЛЯ ТОЧКИ */
+#stream [data-char="."]{
+  display:inline-block;
+  padding-right: var(--dot-gap-after);  /* ПОСЛЕ точки (переопределяем общий шаг) */
+  margin-left:  var(--dot-gap-before);  /* ДО точки (добавка перед самой точкой) */
+}
 
 /* Полоса ошибки внизу панели */
 #errorBar,
 #okBar{
- 
   width: 100%;
-margin-top: 0px;
+  margin-top: 0px;
   padding: 8px 12px;
   background: #000000cb;                         /* чёрная подложка */
-  font-size: var(--text-size);              /* общий размер текста */
+  font-size: var(--text-size);                   /* общий размер текста */
   font-weight: var(--font-weight);
   border-radius: 0;
   /* внутренняя стандартная обводка, чтобы стыки были ровными */
   box-shadow: inset 0 0 0 none var(--stroke-color);
 }
-
 #errorBar{ color: var(--error-dusty-red); }
 #okBar{    color: var(--ok-text); }
-
 #errorBar[hidden]{ display: none !important; }
 #okBar[hidden]{ display: none !important; }
