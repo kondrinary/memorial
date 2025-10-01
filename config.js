@@ -7,6 +7,11 @@
 узкий неразрывный пробел: &#8239; (подходит для «—» в русском: &#8239;—&#8239;)
 */
 
+// === UI для дебаг-полосы ===
+window.AppConfig = window.AppConfig || {};
+AppConfig.UI = Object.assign(AppConfig.UI || {}, {
+  DB_COUNT_REFRESH_MS: 4000 // забираем колво дат в базе раз в 4 секунды 
+});
 
 
 
@@ -52,6 +57,8 @@ waitingStart: "ожидание запуска. нажмите кнопку по
   nowPlaying: "сейчас звучит ",
   hz: "Гц",
   idxLabel: "индекс ",
+  dbCount: "Количество дат в базе: {n}",
+  nowPlayingBtn: "что сейчас звучит?",
 
 // «успех-бар» (белый текст)
   okBar: "ваша запись добавлена в память цифрового мемориала"
@@ -93,6 +100,8 @@ waitingStart: "ожидание запуска. нажмите кнопку по
   nowPlaying: "Now playing",
   hz: "Hz",
   idxLabel: "idx",
+  dbCount: "Dates in database: {n}",
+nowPlayingBtn: "what is playing now?",
 
 
 // «успех-бар» (белый текст)
@@ -173,3 +182,10 @@ window.AppConfig = {
     appId: "ВАШ_APP_ID"
   }
 };
+
+
+
+
+
+
+

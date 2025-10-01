@@ -71,6 +71,8 @@
 
   --contacts-wrap-lh: 1;     /* межстрочный у контактов на узких экранах */
   --contacts-extra-pad: 56px;/* запас под авто-перенос контактов (см. #right) */
+
+
 }
 /* =========================================== */
 
@@ -141,6 +143,8 @@ html, body {
   padding: 24px;
   padding-bottom: calc(var(--bottom-panel-h) + var(--contacts-extra-pad));
   overflow: auto;
+    padding-top: calc(var(--contacts-h) * 2 + 8px); /* контакты + дебаг */
+
 }
 
 /* кнопка языка  */
@@ -226,6 +230,7 @@ button:focus-visible{
   background: var(--bottom-panel-bg); /* не просвечивать при скролле */
   padding-top: 0;
   padding-bottom: var(--stack-gap);
+    order: -1; /* показываем форму выше .card, когда она видима */
 }
 
 /* поля ввода */
@@ -259,7 +264,10 @@ button:focus-visible{
   position: fixed;
   left: 0;
   right: 0;
-  top: 0;                          
+/*    top: var(--contacts-h);   если над ним что то есть типа контакт-бара                      
+      height: var(--contacts-h);   */ 
+
+  top: 0; 
   height: var(--contacts-h);
   background: #000;                   
   color: var(--text-color);
@@ -268,26 +276,29 @@ button:focus-visible{
   line-height: var(--contacts-h);
   text-align: center;
   z-index: 1000;
-  /* box-shadow: inset 0 0 0 var(--stroke-size) var(--stroke-color); */
+ 
 }
 
 /* плашка «Контакты» */
 #contactsBar{
   position: fixed;
-  left: 0; right: 0;                 
-  bottom: 0;                          /* остаётся над нижней панелью */
-  min-height: var(--contacts-h);      /* вместо жёсткой height */
-  height: auto;
+  left: 0; right: 0;
+  top: 0;                 /* было bottom:0 */
+  bottom: auto;
+  min-height: var(--contacts-h);
   padding: 4px 12px;
-  background: #000;
-  color: var(--text-color);
+  background: #fff;       /* белый фон */
+  color: #000;            /* чёрный текст */
   font-size: var(--contacts-size);
   font-weight: 100;
-  line-height: var(--contacts-wrap-lh); /* переменная для переносов */
+  line-height: var(--contacts-wrap-lh);
   text-align: center;
-  white-space: normal;                /* разрешаем перенос */
+  white-space: normal;
   word-break: break-word;
-  z-index: 950;              
+  z-index: 1050;          /* выше debug (1000), ниже кнопки языка (1100) */
+
+/* display:none !important;   СКРЫТО */
+
 }
 
 /* поток дат */
@@ -324,3 +335,19 @@ button:focus-visible{
 #okBar{    color: var(--ok-text); }
 #errorBar[hidden]{ display: none !important; }
 #okBar[hidden]{ display: none !important; }
+
+
+.debug-side{
+  position: fixed;
+  top: var(--contacts-current-h);
+  height: var(--contacts-h);
+  line-height: var(--contacts-h);
+  z-index: 1050;
+  font-size: var(--contacts-size);
+  color: var(--text-color);
+  background: transparent;
+  pointer-events: auto;
+  user-select: none;
+}
+#dbLeft{  left: 12px; }
+#dbRight{ right: 12px; cursor: pointer; text-decoration: underline; }

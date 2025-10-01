@@ -19,8 +19,8 @@
 
 
 <body>
-<!-- ПЛАШКА КОНТАКТЫ --> 
-<div id="contactsBar"></div>
+<!-- ПЛАШКА КОНТАКТЫ 
+<div id="contactsBar"></div> --> 
 
 <!-- ПОКАЗЫВАЕМ ОГОНЬ/ШУМ НА ФОНЕ -->
 <iframe id="fireFrame" src="./fire.html" class="bg-flame"></iframe>
@@ -47,8 +47,8 @@
 
     <!-- Форма появляется после старта; интро-блок остаётся сверху -->
     <div id="formSection">
-      <input id="birthInput" placeholder="Дата рождения (ДД.ММ.ГГГГ)" maxlength="10">
-      <input id="deathInput" placeholder="Дата смерти (ДД.ММ.ГГГГ)" maxlength="10">
+      <input id="birthInput"  maxlength="10">
+      <input id="deathInput"  maxlength="10">
       <button id="addBtn" type="button">Добавить</button>
 
     </div> 
@@ -69,6 +69,9 @@
 
   </div>
 </div>
+
+<div id="dbLeft"  class="debug-side"></div>
+<div id="dbRight" class="debug-side"></div>
 
 <!-- Правая панель: бесконечный поток дат (в одну ленту) -->
 <div id="right">
