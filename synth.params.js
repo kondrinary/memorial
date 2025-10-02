@@ -119,15 +119,15 @@ echoDamp: 2500,  // Гц   — демпфирование верхов (Freeverb
 
   // Усиления полос в дБ (нейтраль = 0)
   masterEqLow:   -2,   // НЧ-полка (низ)
-  masterEqMid:   -3,   // середина
-  masterEqHigh:  -2,   // ВЧ-полка (верх)
+  masterEqMid:   0,   // середина
+  masterEqHigh:  -6,   // ВЧ-полка (верх)
 
   // Частоты раздела полос (Гц)
   masterEqLowFreq:   150,   // граница Low/Mid
-  masterEqHighFreq:  1200,  // граница Mid/High
+  masterEqHighFreq:  350,  // граница Mid/High
 
   // Добротность (общая для всех полос)
-  masterEqQ: 8.0,
+  masterEqQ: 1.0,
 
 
 
