@@ -24,7 +24,7 @@ window.SYNTH_PARAMS = {
   busLevel:    0.60, // Уровень суммы перед FX-цепью (до фильтров/реверба/дилея)
 
   // ==== Корпусный MORPH (две формы волны через CrossFade) ====
-  bodyMorph:   0.2,        // 0 = чистый A (sine), 1 = чистый B (sawtooth). 
+  bodyMorph:   0.05,        // 0 = чистый A (sine), 1 = чистый B (sawtooth). 
   bodyA_Osc:  'sine',       // Осциллятор корпуса A: 'sine'|'triangle'|'square'|'sawtooth'|'fatsawtooth'...
   bodyB_Osc:  'sawtooth',        // Осциллятор корпуса B. Советуются пары: sine↔sawtooth, triangle↔square
   bodyEnv: {                // ЕДИНАЯ огибающая корпуса (ADSR) — применяется к обоим корпусам A и B
@@ -38,7 +38,7 @@ window.SYNTH_PARAMS = {
 
   // ==== Динамика РЕЛИЗА тела от индекса  ====
   indexRelMin:     0.50, // сек — минимум (для 9)
-  indexRelMax:     7.00, // сек — максимум (для 0)
+  indexRelMax:     6.00, // сек — максимум (для 0)
   indexRelCurveK:  1.5,  // k в экспоненте: 1 = линейно; >1 — сильнее укорачивает верх
 
 
@@ -92,20 +92,20 @@ window.SYNTH_PARAMS = {
   indexDelayMinSec: 0.2, // сек — минимум времени задержки (для 0)
   indexDelayMaxSec: 0.6, // сек — максимум времени задержки (для 9)
   indexFeedbackMin: 0.2, // минимум feedback (для 0)
-  indexFeedbackMax: 1.5, // максимум feedback (для 9)
+  indexFeedbackMax: 1, // максимум feedback (для 9)
   indexDelayCurveK: 1, // экспонента  кривой делея 1 = линейно; >1 — агрессивнее к верхам
-  indexFeedbackCurveK:  1, // экспонента кривой фидбека 
+  indexFeedbackCurveK:  1.5, // экспонента кривой фидбека 
 
 // Реверб ПОСЛЕ дилея (только для повторов)
 echoWet:  0.8,  // 0..1 — сколько ревёрба добавить к повторам (внутримикс ветки)
-echoRoom: 0.8,  // 0..1 — размер комнаты (Freeverb.roomSize)
-echoDamp: 2000,  // Гц   — демпфирование верхов (Freeverb.dampening)
+echoRoom: 0.7,  // 0..1 — размер комнаты (Freeverb.roomSize)
+echoDamp: 5000,  // Гц   — демпфирование верхов (Freeverb.dampening)
  
 
   // ==== Системные лимиты/мастер ====
-  bodyPolyMax:   16,   // Максимум одновременно звучащих голосов корпуса (на каждый из A и B)
-  attackPolyMax: 16,   // Максимум голосов FM-атаки
-  masterDb:      -4,    // Общая громкость мастера (дБ) на Tone.Destination
+  bodyPolyMax:   24,   // Максимум одновременно звучащих голосов корпуса (на каждый из A и B)
+  attackPolyMax: 24,   // Максимум голосов FM-атаки
+  masterDb:      -6,    // Общая громкость мастера (дБ) на Tone.Destination
 
 
 // ==== Мастер-EQ (после masterGain, перед Destination) ====
@@ -118,16 +118,16 @@ echoDamp: 2000,  // Гц   — демпфирование верхов (Freeverb
   masterEqEnable: true,
 
   // Усиления полос в дБ (нейтраль = 0)
-  masterEqLow:   0,   // НЧ-полка (низ)
-  masterEqMid:   0,   // середина
-  masterEqHigh:  0,   // ВЧ-полка (верх)
+  masterEqLow:   -2,   // НЧ-полка (низ)
+  masterEqMid:   -3,   // середина
+  masterEqHigh:  -2,   // ВЧ-полка (верх)
 
   // Частоты раздела полос (Гц)
-  masterEqLowFreq:   400,   // граница Low/Mid
-  masterEqHighFreq:  2500,  // граница Mid/High
+  masterEqLowFreq:   150,   // граница Low/Mid
+  masterEqHighFreq:  1200,  // граница Mid/High
 
   // Добротность (общая для всех полос)
-  masterEqQ: 1.0,
+  masterEqQ: 8.0,
 
 
 

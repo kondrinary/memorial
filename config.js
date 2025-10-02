@@ -197,8 +197,8 @@ window.AppConfig = {
   },
 
   // Маппинг 0..9 → частоты
-  FREQ_MIN: 90,
-  FREQ_MAX: 500,
+  FREQ_MIN: 500,
+  FREQ_MAX: 2500,
   PITCH_MODE: 'linear',
 
   // Ветка RTDB
