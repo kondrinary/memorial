@@ -188,9 +188,9 @@
     attackGain.connect(bodyBusGain);
 
     // Последовательная магистраль
-    dcHPF   = new Tone.Filter({ type:'highpass', frequency: FX.dcCutHz, Q: 0.707 });
+    dcHPF   = new Tone.Filter({ type:'highpass', frequency: FX.dcCutHz, Q: 0.300 });
     comp    = new Tone.Compressor({ threshold: FX.compThresh, ratio: FX.compRatio, attack: FX.compAttack, release: FX.compRelease });
-    lowpass = new Tone.Filter({ type:'lowpass', frequency: FX.lowpassFreq, Q: 0.707 });
+    lowpass = new Tone.Filter({ type:'lowpass', frequency: FX.lowpassFreq, Q: 0.300 });
 
     bodyBusGain.connect(dcHPF);
     dcHPF.connect(comp);
