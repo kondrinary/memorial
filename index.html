@@ -41,6 +41,11 @@
     <!-- Старт -->
     <button id="startBtn" type="button">Старт</button>
 
+      <!-- НОВОЕ МЕСТО для карточки контактов -->
+  <div id="contactsCard" class="card card--contacts">
+    <div class="desc" id="contactsCardText"></div>
+  </div>
+
     <!-- Форма появляется после старта; интро-блок остаётся сверху -->
     <div id="formSection">
       <input id="birthInput"  maxlength="10">
@@ -75,10 +80,7 @@
 </div>
 
 
-<!-- Контакты (карточка такая же, как описание) -->
-<div id="contactsCard" class="card card--contacts">
-  <div class="desc" id="contactsCardText"></div>
-</div>
+
 
 <!-- Порядок важен: конфиг → синт → визуал → плеер → база → мейн -->
 <script src="config.js"></script>

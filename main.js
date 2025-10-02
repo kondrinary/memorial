@@ -29,6 +29,8 @@
   }
   window.setDebug = setDebug;
 
+  document.documentElement.classList.remove('app-started');
+
   function showError(msg){
     if (!errorBar) return;
     errorBar.textContent = msg;
@@ -118,6 +120,8 @@
   startBtn.addEventListener('click', async ()=>{
     clearError(); clearOk();
 
+
+
     // описание → play
     document.querySelector("#introBox .desc").innerText = TEXTS[CURRENT_LANG].playDesc;
     const fire  = document.getElementById('fireFrame');
@@ -162,6 +166,7 @@
     formSection.style.display = 'flex';
     if (debugInfo) setDebug(tr('statusSubscribing'));
 
+     document.documentElement.classList.add('app-started'); 
     // ← маркер: перешли на второй экран (для «ушей»/счётчика)
     document.dispatchEvent(new Event('app-started'));
 

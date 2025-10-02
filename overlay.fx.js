@@ -30,14 +30,19 @@
     bar = document.createElement('div');
     Object.assign(bar.style, {
       position: 'absolute',
-      left: '0',
-      right: '0',
-      height: '0px',
-      transform: 'translateY(0)',
-      transition: 'transform 140ms ease-out, height 140ms ease-out',
-      willChange: 'transform,height',
-      background: '#ffffff3b',
-      mixBlendMode: 'difference'
+  /* ширина будет растягиваться на весь экран, левый край вычислим в reposition() */
+  left: '0',
+  height: '0px',
+  transform: 'translateY(0)',
+  transition: 'transform 140ms ease-out, height 140ms ease-out',
+  willChange: 'transform,height',
+
+/* ПРОЗРАЧНАЯ ПОЛОСА С БЕЛОЙ ОБВОДКОЙ */
+  background: 'transparent',     
+  border: '1px solid #fff',      // белая обводка 1px
+  boxSizing: 'border-box',
+  zIndex: '10'
+      
     });
 
     wrap.appendChild(bar);
@@ -56,6 +61,12 @@
 
   function reposition(top = lastTop, h = lastH) {
     if (top == null || h == null) return;
+
+  // Растянуть по ширине на весь экран:
+  const rr = root.getBoundingClientRect();
+  bar.style.left  = (-rr.left) + 'px'; // сдвиг к левой кромке viewport
+  bar.style.width = '100vw';           // во всю ширину окна
+
     const pad = (h * (CFG.H_FACTOR - 1)) / 2;
     const y = Math.round(top - pad);
     const HH = Math.round(h * CFG.H_FACTOR);
