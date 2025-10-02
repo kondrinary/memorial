@@ -1,6 +1,6 @@
 /* ========== НАСТРОЙКИ (меняй тут) ========== */
 :root{
-  --ui-scale: 1.2;                 /* 0…2 — общий масштаб UI */
+  --ui-scale: 1.0;                 /* 0…2 — общий масштаб UI */
   --intro-top: 30vh;               /* верх плашки от окна */
   --page-bg: #000;                 /* фон страницы */
   --card-bg: #000000d0;            /* фон плашки-описания */
@@ -30,7 +30,7 @@
   --input-font:   calc(14px * var(--ui-scale));  /* шрифт инпутов */
 
   /* веса шрифтов */
-  --font-weight: 400;            /* общий вес текста/кнопок/форм/контактов */
+  --font-weight: 260;            /* общий вес текста/кнопок/форм/контактов */
   --title-weight: 600;           /* вес заголовка */
 
   /* габариты панели/отступы */
@@ -54,7 +54,7 @@
   --contacts-current-h: var(--contacts-h); /* фактическая высота контактов (JS обновит при необходимости) */
 
   /* нижняя плашка  */
-  --bottom-panel-h: 30vh;     /* высота нижней фиксированнной панели */
+  --bottom-panel-h: 34vh;     /* высота нижней фиксированнной панели */
   --bottom-panel-bg: #000;    /* цвет фона панели */
 
   --error-dusty-red: #a93f3f;   /* цвет текста ошибки */
@@ -84,6 +84,17 @@
 
 }
 /* =========================================== */
+
+
+.u-link {
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-color: #fff;
+  text-underline-offset: 2px;
+}
+.u-link:hover { opacity: .85; }
+.u-link:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+
 
 /* базовые */
 *{ box-sizing:border-box }
@@ -173,11 +184,11 @@ text-align: justify;
 
 }
 .card .title{
-  margin:0 0 6px 0; color:var(--text-color);
+  margin:10px 10px 6px 0; color:var(--text-color);
   font-size:var(--title-size); font-weight:var(--title-weight);
 }
 .card .desc{
-  margin:0; color:var(--text-color);
+  margin: 10px; color:var(--text-color);
   font-size:var(--text-size); font-weight:var(--font-weight);
   line-height:var(--desc-lh);
 }
@@ -227,7 +238,7 @@ button:focus-visible{
   top: 0;
   z-index: 2;
   background: var(--bottom-panel-bg); /* не просвечивать при скролле */
-  padding-top: 0;
+  padding-top: 0px;
   padding-bottom: var(--stack-gap);
   order: -1; /* показываем форму выше .card, когда она видима */
   align-items: center; /* центр по вертикали в ряду */
@@ -469,4 +480,27 @@ button:focus-visible{
   #right{
     padding-top: calc(var(--contacts-h) * 2 + 8px); /* две строки в узком окне */
   }
+}
+
+
+/* Карточка "Контакты" — такая же как описание, слева, на всю ширину колонки */
+.card--contacts{
+  grid-column: 1; /* как и .card с описанием */
+  background: var(--card-bg);
+  box-shadow: inset 0 0 0 var(--stroke-size) var(--stroke-color);
+  border-radius: 0;
+  padding: var(--card-pad-y) var(--card-pad-x);
+  /* нейтрализуем межрядный зазор, чтобы прилипнуть к описанию "встык" */
+  margin-top: calc(-1 * var(--stack-gap));
+}
+
+/* текст внутри — как у описания */
+.card--contacts .desc{
+  margin: 0;
+  color: var(--text-color);
+  font-size: var(--text-size);
+  font-weight: var(--font-weight);
+  line-height: var(--desc-lh);
+  white-space: normal;
+  word-break: break-word;
 }

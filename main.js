@@ -67,13 +67,16 @@
     document.querySelector("#introBox .title").innerText = L.projectTitle;
     document.getElementById("addBtn").innerText = L.addBtn;
 
+      const contactsCardText = document.getElementById('contactsCardText');
+  if (contactsCardText) contactsCardText.innerHTML = L.contacts;
+
     // если старт уже нажат (кнопка скрыта) — показываем playDesc, иначе introDesc
     const isPlaying = (startBtn && startBtn.style.display === 'none');
     document.querySelector("#introBox .desc").innerText = isPlaying ? L.playDesc : L.introDesc;
 
     document.getElementById("status").innerText = "";
     const contactsBar = document.getElementById("contactsBar");
-    if (contactsBar) contactsBar.innerText = L.contacts;
+    if (contactsBar) contactsBar.innerHTML = L.contacts;
 
     // inline-кнопка «что сейчас играет» если создана — локализуем
     const nowInline = document.getElementById('nowPlayInline');
@@ -514,6 +517,12 @@ if (err) err.hidden = true;
     form.insertAdjacentElement('afterend', ok);
     ok.insertAdjacentElement('afterend', err);
     err.insertAdjacentElement('afterend', intro);
+
+    // сразу за описанием ставим карточку контактов
+const contactsCard = document.getElementById('contactsCard');
+if (contactsCard) intro.insertAdjacentElement('afterend', contactsCard);
+
+
     window.recalcBarsWidth && window.recalcBarsWidth();
   }
 
