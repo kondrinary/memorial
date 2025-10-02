@@ -556,3 +556,65 @@ if (err) err.hidden = true;
   setTimeout(applyBarsWidth, 120);
 })();
 
+
+// === Упрощённый центр для дебаг-текста в верхней полосе ===
+(function(){
+  const di = document.getElementById('debugInfo');
+  if (!di) return;
+
+  let center = di.querySelector('.di-center');
+  if (!center){
+    center = document.createElement('span');
+    center.className = 'di-center';
+    center.textContent = di.textContent || '';
+    di.textContent = '';
+    di.appendChild(center);
+  }
+
+  const oldSetDebug = window.setDebug;
+  window.setDebug = function(msg){
+    center.textContent = (msg ?? '');
+    if (typeof oldSetDebug === 'function'){
+      try{ oldSetDebug(msg); }catch(e){}
+    }
+  };
+})();
+
+
+// === Авто-скейл шрифтов для портретного экрана (мобилка) ===
+(function(){
+  const root = document.documentElement;
+
+  // базовое значение из CSS (:root { --ui-scale: … })
+  const cssVal = getComputedStyle(root).getPropertyValue('--ui-scale').trim();
+  const base   = Number(cssVal) || 1;
+
+  // запомним базу один раз
+  if (!root.__uiBase) root.__uiBase = base;
+
+  function applyScale(){
+    const w = Math.max(1, window.innerWidth  || 1);
+    const h = Math.max(1, window.innerHeight || 1);
+    const portrait = h > w;
+
+    // капы можно вынести в конфиг (не обязательно):
+    const capMax = (window.AppConfig?.UI?.MOBILE_SCALE_MAX) ?? (root.__uiBase * 1.5);
+    const capMin = (window.AppConfig?.UI?.MOBILE_SCALE_MIN) ??  root.__uiBase;
+
+    let scale = root.__uiBase;
+    if (portrait){
+      // пропорционально соотношению сторон, но в разумных пределах
+      const k = 0.90 * (h / w);              // «чувствительность»
+      scale = Math.max(capMin, Math.min(capMax, root.__uiBase * k));
+    }
+    root.style.setProperty('--ui-scale', scale.toFixed(3));
+  }
+
+  window.addEventListener('load', applyScale);
+  window.addEventListener('resize', applyScale);
+  window.addEventListener('orientationchange', applyScale);
+
+  // на всякий случай — наружу
+  window.applyResponsiveUIScale = applyScale;
+})();
+
