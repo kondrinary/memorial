@@ -1,13 +1,13 @@
 /* ========== НАСТРОЙКИ (меняй тут) ========== */
 :root{
-  --ui-scale: 1;                 /* 0…2 — общий масштаб UI */
-  --intro-top: 30vh;             /* верх плашки от окна */
-  --page-bg: #000;               /* фон страницы */
-  --card-bg: #000000d0;               /* фон плашки-описания */
-  --text-color: #fff;            /* общий цвет текста */
-  --text-muted: #424242;         /* приглушённый текст */
-  --stream: #ffffff;  
-  --accent: #2f47ff;             /* активные цифры */
+  --ui-scale: 1.2;                 /* 0…2 — общий масштаб UI */
+  --intro-top: 30vh;               /* верх плашки от окна */
+  --page-bg: #000;                 /* фон страницы */
+  --card-bg: #000000d0;            /* фон плашки-описания */
+  --text-color: #fff;              /* общий цвет текста */
+  --text-muted: #424242;           /* приглушённый текст */
+  --stream: #ffffff;
+  --accent: #2f47ff;               /* активные цифры */
 
   /* внутренняя обводка (стандартизированная для всех UI) */
   --stroke-color: #fff;
@@ -16,7 +16,7 @@
   /* шрифт */
   --font-ui: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, "Cascadia Code", Menlo, Consolas, monospace;
-  
+
   /* общий шаг между символами даты */
   --char-gap: 1%;
   /* интервалы вокруг точки (до и после) */
@@ -35,8 +35,8 @@
 
   /* габариты панели/отступы */
   --panel-maxw: calc(800px * var(--ui-scale));
-  --stack-gap:  calc(12px * var(--ui-scale));
-  --row-gap:    calc(10px * var(--ui-scale));
+  --stack-gap:  calc(4px * var(--ui-scale));
+  --row-gap:    calc(4px * var(--ui-scale));
 
   /* кнопки (кроме кнопки языка) */
   --btn-bg:  #fff;
@@ -51,6 +51,7 @@
 
   /* верхняя плашка  */
   --contacts-h: 20px;
+  --contacts-current-h: var(--contacts-h); /* фактическая высота контактов (JS обновит при необходимости) */
 
   /* нижняя плашка  */
   --bottom-panel-h: 30vh;     /* высота нижней фиксированнной панели */
@@ -72,6 +73,14 @@
   --contacts-wrap-lh: 1;     /* межстрочный у контактов на узких экранах */
   --contacts-extra-pad: 56px;/* запас под авто-перенос контактов (см. #right) */
 
+  /* отступы «ушей» у дебага */
+  --debug-left-pad: 12px;
+  --debug-right-pad: 12px;
+
+  --debug-top: 0px;           /* вертикальное смещение debug-строки и «ушей» */
+  --debug-min-gap: 16px;      /* мин. зазор между ушами и центральным текстом */
+
+
 
 }
 /* =========================================== */
@@ -91,8 +100,8 @@ body{
 /* Включаем табличные цифры и линейные формы везде, где есть текст/цифры */
 html, body {
   font-family: var(--font-ui);
-  font-feature-settings: "tnum" 1, "lnum" 1;      /* на случай, если попадётся не-моновариант */
-  font-variant-numeric: tabular-nums lining-nums; /* кроссбраузерно активируем табличные цифры */
+  font-feature-settings: "tnum" 1, "lnum" 1;
+  font-variant-numeric: tabular-nums lining-nums;
 }
 
 /* фон (ифреймы) */
@@ -109,12 +118,12 @@ html, body {
   position: fixed;
   left: 0; right: 0; bottom: 0;
   height: var(--bottom-panel-h);
-  z-index: 900;                
+  z-index: 900;
   background: var(--bottom-panel-bg);
   display: flex;
   align-items: flex-start;
   justify-content: center;
-  padding: 24px;              
+  padding: 24px;
   pointer-events: auto;
 }
 
@@ -126,52 +135,42 @@ html, body {
   width: 100%;
   max-width: var(--panel-maxw);
   margin-top: 0;
-  display: grid;                       /* NEW */
-  grid-template-columns: 1fr auto;     /* NEW */
-  grid-auto-rows: min-content;         /* NEW */
-  align-items: start;                  /* NEW */
-  row-gap: var(--stack-gap);           /* NEW */
-  column-gap: 0;                       /* NEW: встык к кнопке */
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-auto-rows: min-content;
+  align-items: start;
+  row-gap: var(--stack-gap);
+  column-gap: 0;
   pointer-events: auto;
   height: 100%;
-  overflow: auto;                      /* скролл внутри панели */
+  overflow: auto; /* скролл внутри панели */
 }
 
 #right{
   position: fixed; inset: 0;
-  z-index: 10;                 /* ниже нижней панели */
+  z-index: 10; /* ниже нижней панели */
   padding: 24px;
   padding-bottom: calc(var(--bottom-panel-h) + var(--contacts-extra-pad));
+  padding-top: calc(var(--contacts-h) * 2 + 8px); /* контакты + дебаг */
   overflow: auto;
-    padding-top: calc(var(--contacts-h) * 2 + 8px); /* контакты + дебаг */
-
 }
-
-/* кнопка языка  */
-.flag-btn{
-  position: fixed;             
-  top: var(--flag-top);
-  right: var(--flag-right);
-  z-index: 1100;
-  background:#ffffff; color:#000000; border:none;
-  padding:.4em 1.2em; font-weight:400; font-size:.9em; cursor:pointer;
-}
-.flag-btn:hover{ background:var(--btn-hover) }
-.flag-btn:active{ background:var(--btn-active); transform:scale(var(--btn-scale-active)) }
 
 /* плашка-интро (описание) */
 .card{
   background:var(--card-bg);
-  box-shadow: inset 0 0 0 none var(--stroke-color);
-  border-radius:0; 
-  padding: var(--card-pad-y) var(--card-pad-x);
-  grid-column: 1;              /* NEW: слева */
+  box-shadow: inset 0 0 0 var(--stroke-size) var(--stroke-color);
+  border-radius:0;
+padding: 0 var(--card-pad-x) var(--card-pad-y) var(--card-pad-x); 
+  grid-column: 1; /* слева */
   /* NEW: внутри .card делаем "тайтл | описание" в одну строку по верху */
-  display: grid;               /* NEW */
-  grid-auto-flow: column;      /* NEW */
-  grid-template-columns: auto 1fr; /* NEW: [title] [desc] */
-  align-items: start;          /* NEW */
-  column-gap: var(--stack-gap);/* NEW */
+  display: grid;
+  grid-auto-flow: column;
+  grid-template-columns: auto 1fr; /* [title] [desc] */
+  align-items: start;
+  column-gap: var(--stack-gap);
+
+text-align: justify;  
+
 }
 .card .title{
   margin:0 0 6px 0; color:var(--text-color);
@@ -187,10 +186,10 @@ html, body {
 button{
   appearance:none; border:none; border-radius:var(--btn-radius);
   background:var(--btn-bg); color:var(--btn-fg);
-  font-family:var(--font-family); font-size:var(--text-size);
+  font-family:var(--font-ui); font-size:var(--text-size);
   font-weight:var(--font-weight);
   cursor:pointer;
-  box-shadow: inset 0 0 0 var(--stroke-size) var(--stroke-color);
+  box-shadow: inset 0 0 0 var(--stroke-size) var(--stroke-color); /* стандартизированная белая обводка */
   transition: background-color .15s ease, transform .06s ease;
 }
 button:hover{ background:var(--btn-hover) }
@@ -207,11 +206,12 @@ button:focus-visible{
   display:block; width:var(--start-w);
   height:var(--btn-h); line-height:var(--btn-h);
   padding:0 var(--btn-pad-x);
-  margin:0;                     /* NEW: без внешних отступов */
+  margin:0;
   position: static; top: auto; z-index: auto;
-  grid-column: 2;               /* NEW: правая колонка */
-  align-self: start;            /* NEW: по верхнему краю */
-  justify-self: start;          /* NEW: встык к .card */
+  grid-column: 2;   /* правая колонка */
+  align-self: start;
+  justify-self: start;
+
 }
 
 /* форма (скрыта до старта) — при показе занимает ВЕРХНИЙ РЯД на всю ширину
@@ -219,64 +219,81 @@ button:focus-visible{
 #formSection{
   display:none;                 /* включит main.js после старта */
   flex-direction:row;
-  align-items:stretch;
   gap:var(--row-gap);
   width:100%;
   flex-wrap:nowrap;
-  grid-column: 1 / -1;          /* NEW: занять обе колонки сверху */
+  grid-column: 1 / -1;          /* занять обе колонки сверху */
   position: sticky;
   top: 0;
   z-index: 2;
   background: var(--bottom-panel-bg); /* не просвечивать при скролле */
   padding-top: 0;
   padding-bottom: var(--stack-gap);
-    order: -1; /* показываем форму выше .card, когда она видима */
+  order: -1; /* показываем форму выше .card, когда она видима */
+  align-items: center; /* центр по вертикали в ряду */
 }
 
 /* поля ввода */
 #birthInput,#deathInput{
-  flex:1 1 0; min-width:0;      /* позволяем сжиматься, чтобы «Добавить» не падала */
-  height:var(--btn-h); padding:0 8px;
-  font-family:var(--font-family); font-size:var(--input-font);
+  flex: 1 1 0;           /* было 0 1 160px */
+  min-width: 140px;      /* чтобы не сжимались в ноль */
+  max-width: none;       /* снимем ограничение 180px */
+  height:var(--btn-h);
+  padding:0 8px;
+
+  /* типографика */
+  -webkit-appearance: none;
+  appearance: none;
+  border: none;
+  font-family:var(--font-ui); font-size:var(--input-font);
   font-weight:var(--font-weight);
-  color:#fff; background:#000; border: 1px  ;;
-  box-shadow: inset 0 0 0 var(--stroke-size) var(--stroke-color);
+  color:#fff; background:#000;
   border-radius:0;
+
+  /* белая «обводка» через inset-тень (стандарт) */
+  box-shadow: inset 0 0 0 var(--stroke-size) var(--stroke-color);
 }
 /* плейсхолдеры явно видимые */
 #birthInput::placeholder,
 #deathInput::placeholder{
   color: rgba(174, 174, 174, 0.75);
-  opacity: 1;                   /* Safari */
+  opacity: 1; /* Safari */
 }
 
-/* кнопка «Добавить» — в одной линии справа */
-#addBtn{
-  flex:0 0 auto; height:var(--btn-h);
+/* кнопки в строке формы — одинаковые габариты */
+#addBtn,
+#nowPlayInline{
+  flex:0 0 auto;
+  height:var(--btn-h);
   padding:0 var(--btn-pad-x);
-  border-radius:0; white-space:nowrap; /* текст не переносится */
-  margin-left: auto;            /* прижать к правому краю формы */
+  border-radius:0;
+  white-space:nowrap; /* текст не переносится => высота фиксированная */
 }
+
+/* кнопка «Добавить» — прижать к правому краю строки формы */
+#addBtn{ margin-left: auto; }
 
 /* статус/отладка */
 #status{ font-size:var(--text-size); color:var(--text-color); font-weight:var(--font-weight) }
 #debugInfo{
   position: fixed;
-  left: 0;
-  right: 0;
-/*    top: var(--contacts-h);   если над ним что то есть типа контакт-бара                      
-      height: var(--contacts-h);   */ 
+  top: var(--debug-top);
+  /* растягиваем РОВНО между ушами */
+  left:  var(--debug-left-reserve, 0px);
+  right: var(--debug-right-reserve, 0px);
 
-  top: 0; 
   height: var(--contacts-h);
-  background: #000;                   
+  background: #000;
   color: var(--text-color);
   font-size: var(--contacts-size);
   font-weight: var(--font-weight);
   line-height: var(--contacts-h);
   text-align: center;
   z-index: 1000;
- 
+
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* плашка «Контакты» */
@@ -296,9 +313,7 @@ button:focus-visible{
   white-space: normal;
   word-break: break-word;
   z-index: 1050;          /* выше debug (1000), ниже кнопки языка (1100) */
-
-/* display:none !important;   СКРЫТО */
-
+  /* display:none !important;   СКРЫТО */
 }
 
 /* поток дат */
@@ -318,36 +333,140 @@ button:focus-visible{
   margin-left:  var(--dot-gap-before);  /* ДО точки (добавка перед самой точкой) */
 }
 
-/* Полоса ошибки внизу панели */
-#errorBar,
-#okBar{
-  width: 100%;
-  margin-top: 0px;
-  padding: 8px 12px;
-  background: #000000cb;                         /* чёрная подложка */
-  font-size: var(--text-size);                   /* общий размер текста */
-  font-weight: var(--font-weight);
+/* Полоса ошибки/успеха — самостоятельный блок между формой и описанием */
+#okBar, #errorBar{
+  display: block;
+  position: relative;
+  grid-column: 1 / -1; /* каждая полоса — на всю ширину сетки (обе колонки) */
+
+  /* геометрия, управляемая из JS (var(--bars-left/width)) */
+  width: var(--bars-width, 100%);
+  margin-left: var(--bars-left, 0px);
+
+  box-sizing: border-box;
+  margin-top: 0px; margin-bottom: 6px;
+  padding: 10px 12px;
+
+  /* стандартизированная белая обводка */
+  box-shadow: inset 0 0 0 var(--stroke-size) var(--stroke-color);
   border-radius: 0;
-  /* внутренняя стандартная обводка, чтобы стыки были ровными */
-  box-shadow: inset 0 0 0 none var(--stroke-color);
+
+  background: var(--bottom-panel-bg);
+  color: var(--text-color);
 }
+/* скрываем ТОЛЬКО когда есть [hidden] */
+#okBar[hidden], #errorBar[hidden]{ display: none !important; }
+
 #errorBar{ color: var(--error-dusty-red); }
 #okBar{    color: var(--ok-text); }
-#errorBar[hidden]{ display: none !important; }
-#okBar[hidden]{ display: none !important; }
 
-
+/* «уши» у дебага */
 .debug-side{
   position: fixed;
-  top: var(--contacts-current-h);
+  top: var(--debug-top);
   height: var(--contacts-h);
   line-height: var(--contacts-h);
   z-index: 1050;
   font-size: var(--contacts-size);
-  color: var(--text-color);
+  color: var(--text-color, #fff);
   background: transparent;
   pointer-events: auto;
   user-select: none;
 }
-#dbLeft{  left: 12px; }
-#dbRight{ right: 12px; cursor: pointer; text-decoration: underline; }
+#dbLeft{  left: var(--debug-left-pad); }
+#dbRight{ right: var(--debug-right-pad); cursor: pointer; text-decoration: underline; }
+
+/* Кнопка смены языка как подчёркнутая ссылка в верхней строке (в разметке удалена, правило оставляем на случай старых билдов) */
+#langBtn{ display: none !important; }
+
+
+
+/* центральная строка дебага не налезает на уши */
+#debugInfo{
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* когда совсем тесно — разрешаем скролл по X у центрального текста */
+.debug-tight #debugInfo{
+  overflow-x: auto;
+  text-overflow: clip;
+  cursor: ew-resize;
+}
+
+
+:root{
+  --contacts-h: 20px;      /* высота строки верхней полосы */
+  --debug-top: 0px;        /* отступ от верхнего края окна */
+  --debug-breakpoint: 680px;/* ширина окна, после которой включаем 2-ю строку */
+  --debug-side-pad: 12px;  /* отступ «ушей» от краёв */
+}
+
+/* ЧЕРНАЯ ПОЛОСА ВСЕГДА НА ВЕСЬ ЭКРАН */
+#debugInfo{
+  position: fixed;
+  top: var(--debug-top);
+  left: 0; right: 0;
+  height: var(--contacts-h);      /* по умолчанию одна строка */
+  background: #000;
+  z-index: 1000;
+}
+
+/* Внутри неё — центрируем сам текст дебага простым способом */
+#debugInfo .di-center{
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);    /* строгий центр */
+  height: var(--contacts-h);
+  line-height: var(--contacts-h);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: calc(100% - 2 * 140px); /* небольшой запас от «ушей» без расчётов */
+  text-align: center;
+  pointer-events: none;
+  color: var(--text-color);
+  font-size: var(--contacts-size);
+}
+
+/* УСЫ — как были: по краям верхней строки */
+.debug-side{
+  position: fixed;
+  top: var(--debug-top);
+  height: var(--contacts-h);
+  line-height: var(--contacts-h);
+  z-index: 1050;
+  font-size: var(--contacts-size);
+  color: var(--text-color, #fff);
+  background: transparent;
+  pointer-events: auto;
+  user-select: none;
+}
+#dbLeft  { left:  var(--debug-side-pad); }
+#dbRight { right: var(--debug-side-pad); cursor: pointer; text-decoration: underline; }
+
+/* УЗКОЕ ОКНО → ДВЕ СТРОКИ: уши остаются сверху, центр уезжает на вторую строку вправо */
+@media (max-width: 680px){
+  #debugInfo{ height: calc(var(--contacts-h) * 2); } /* полоса стала выше */
+  #debugInfo .di-center{
+    top: var(--contacts-h);         /* вторая строка */
+    left: auto;
+    right: var(--debug-side-pad);   /* выравниваем по правому краю */
+    transform: none;
+    max-width: calc(100% - 2 * var(--debug-side-pad));
+    text-align: right;
+    pointer-events: auto;           /* можно выделять текст, если нужно */
+  }
+}
+
+/* важное: чтобы контент под полосой не прятался — отступ сверху у правой панели */
+#right{
+  padding-top: calc(var(--contacts-h) + 8px); /* одна строка по умолчанию */
+}
+@media (max-width: 680px){
+  #right{
+    padding-top: calc(var(--contacts-h) * 2 + 8px); /* две строки в узком окне */
+  }
+}

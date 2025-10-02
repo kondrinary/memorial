@@ -23,6 +23,7 @@ let CURRENT_LANG = "ru";
 
 const TEXTS = {
   ru: {
+    addBtn: "добавить",
     startBtn: "подключиться",
     birthInput: "дата рождения (дд.мм.гггг)",
     deathInput: "дата смерти (дд.мм.гггг)",
@@ -65,6 +66,7 @@ waitingStart: "ожидание запуска. нажмите кнопку по
 
   },
   en: {
+    addBtn: "Add",
     startBtn: "Start",
     birthInput: "Date of birth (DD.MM.YYYY)",
     deathInput: "Date of death (DD.MM.YYYY)",

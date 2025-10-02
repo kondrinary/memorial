@@ -11,7 +11,7 @@
   const debugInfo    = document.getElementById('debugInfo');
   const seedBtn      = document.getElementById('seedBtn');
 
-  // ===== ERROR плашка подключение и проверка =====
+  // ===== ERROR/OK плашки =====
   const errorBar = document.getElementById('errorBar');
   const okBar    = document.getElementById('okBar');
 
@@ -22,33 +22,30 @@
     return (key in pack) ? pack[key] : (fallback ?? key);
   }
 
-  window.tr = tr;                       // ← чтобы player.js мог переводить
-  function setDebug(msg){               // ← единый вывод в панель дебага
+  window.tr = tr;                       // чтобы другие модули могли переводить
+  function setDebug(msg){               // единый вывод в панель дебага
     if (!debugInfo) return;
     debugInfo.textContent = (msg ?? '');
   }
-  window.setDebug = setDebug;           // ← player.js тоже сможет вызвать
+  window.setDebug = setDebug;
 
   function showError(msg){
     if (!errorBar) return;
     errorBar.textContent = msg;
-    errorBar.hidden = false;   // показать
+    errorBar.hidden = false;
+    if (okBar) { okBar.hidden = true; okBar.textContent = ''; }
   }
-
   function clearError(){
     if (!errorBar) return;
-    errorBar.hidden = true;    // спрятать
+    errorBar.hidden = true;
     errorBar.textContent = '';
   }
-
   function showOk(msg){
-    // при успехе скрываем ошибку
     if (errorBar){ errorBar.hidden = true; errorBar.textContent = ''; }
     if (!okBar) return;
     okBar.textContent = msg;
     okBar.hidden = false;
   }
-
   function clearOk(){
     if (!okBar) return;
     okBar.hidden = true;
@@ -68,6 +65,7 @@
     document.getElementById("birthInput").placeholder = L.birthInput;
     document.getElementById("deathInput").placeholder = L.deathInput;
     document.querySelector("#introBox .title").innerText = L.projectTitle;
+    document.getElementById("addBtn").innerText = L.addBtn;
 
     // если старт уже нажат (кнопка скрыта) — показываем playDesc, иначе introDesc
     const isPlaying = (startBtn && startBtn.style.display === 'none');
@@ -76,31 +74,17 @@
     document.getElementById("status").innerText = "";
     const contactsBar = document.getElementById("contactsBar");
     if (contactsBar) contactsBar.innerText = L.contacts;
+
+    // inline-кнопка «что сейчас играет» если создана — локализуем
+    const nowInline = document.getElementById('nowPlayInline');
+    if (nowInline) nowInline.textContent = L.nowPlayingBtn || 'что сейчас звучит?';
+
+    // правое «ухо» — языковая кнопка (ENG/РУС)
+    const dbRight = document.getElementById('dbRight');
+    if (dbRight) dbRight.textContent = (CURRENT_LANG === 'ru' ? 'ENG' : 'РУС');
   }
-
-  const langBtn = document.getElementById("langBtn");
-  if (langBtn){
-    langBtn.addEventListener("click", () => {
-      CURRENT_LANG = (CURRENT_LANG === "ru" ? "en" : "ru");
-      langBtn.innerText = (CURRENT_LANG === "ru" ? "ENG" : "РУС");
-      applyTexts();
-
-      // очищаем панели и debug при смене языка
-      clearError();
-      clearOk();
-      setDebug('');
-
-      // если старт ещё не нажали (кнопка видна) — показываем локализованное «ожидание»
-      if (startBtn && startBtn.style.display !== 'none'){
-        setDebug(tr('waitingStart'));
-      }
-    });
-  }
-
-  // ===== Видимость seed-кнопки из config.js =====
-  if (window.AppConfig && AppConfig.ENABLE_SEED === false && seedBtn) {
-    seedBtn.style.display = 'none';
-  }
+  // делаем доступной из внешних блоков
+  window.applyTexts = applyTexts;
 
   // ===== Форматирование ввода "ДД.ММ.ГГГГ" =====
   function formatDateInput(el){
@@ -124,32 +108,25 @@
     return d;
   }
 
+  // ===== стартовые тексты =====
+  clearError(); clearOk(); applyTexts(); setDebug(tr('waitingStart'));
+
   // ====== КНОПКА «Старт» ======
-  // при загрузке подтянуть тексты по текущему языку
-  clearError();
-  clearOk();
-  applyTexts();
-  setDebug(tr('waitingStart'));
-
-  // переключение описания при старте
   startBtn.addEventListener('click', async ()=>{
-    clearError();
-    clearOk();
+    clearError(); clearOk();
 
-    // поменять описание на «play» и переключить фон fire -> noise
+    // описание → play
     document.querySelector("#introBox .desc").innerText = TEXTS[CURRENT_LANG].playDesc;
     const fire  = document.getElementById('fireFrame');
     const noise = document.getElementById('noiseFrame');
     if (fire)  fire.style.display  = 'none';
     if (noise) noise.style.display = 'block';
 
-    // Tone.js не подключён
     if (typeof Tone === 'undefined'){
       showError(tr('errToneMissing'));
       setDebug(tr('errToneMissing'));
       return;
     }
-    // нет работает звук/браузер заблокировал аудио
     try {
       await Tone.start();
     } catch(e){
@@ -158,7 +135,6 @@
       return;
     }
 
-    // Синт
     try {
       if (debugInfo) setDebug(tr('statusPreparingSound'));
       await Synth.init();
@@ -170,7 +146,6 @@
       return;
     }
 
-    // Firebase
     const ok = Data.init();
     if (!ok){
       showError(tr('errFirebaseInit'));
@@ -178,15 +153,15 @@
       return;
     }
 
-    // Единые «серверные» часы
     Data.watchServerOffset();
 
-    // UI
     startBtn.style.display    = 'none';
     formSection.style.display = 'flex';
     if (debugInfo) setDebug(tr('statusSubscribing'));
 
-    // Подписка на базу
+    // ← маркер: перешли на второй экран (для «ушей»/счётчика)
+    document.dispatchEvent(new Event('app-started'));
+
     let startedPlayback = false;
     Data.subscribe((list)=>{
       if (!startedPlayback){
@@ -200,9 +175,9 @@
 
         OverlayFX.init({
           rootEl: document.getElementById('stream'),
-          blendMode: 'screen',  // или 'lighter'
+          blendMode: 'screen',
           blurPx: 6,
-          trailAlpha: 0.10      // 0 — вообще без «послесвечения»
+          trailAlpha: 0.10
         });
 
         if (window.Player && typeof Player.start === 'function') {
@@ -225,24 +200,22 @@
     });
   });
 
-  // ====== КНОПКА «Добавить» (с полосой ошибки) ======
+  // ====== КНОПКА «Добавить» ======
   addBtn.addEventListener('click', async ()=>{
     const bStr = birthInput.value.trim();
     const dStr = deathInput.value.trim();
 
-    // перед новой проверкой прячем прошлые панели
-    clearError();
-    clearOk();
+    clearError(); clearOk();
 
     const bDate = parseValidDate(bStr);
     const dDate = parseValidDate(dStr);
 
     if (!bDate || !dDate){
-      showError(tr('errBadFormat')); // неверный формат даты
+      showError(tr('errBadFormat'));
       return;
     }
     if (dDate.getTime() < bDate.getTime()){
-      showError(tr('errDeathBeforeBirth')); // смерть раньше рождения
+      showError(tr('errDeathBeforeBirth'));
       return;
     }
 
@@ -253,9 +226,15 @@
     if (ok){
       birthInput.value = '';
       deathInput.value = '';
-      showOk( tr('okBar') ); // добавлено в базу
+      showOk(tr('okBar'));
+
+      // показать низ, где появляется новая запись
+      setTimeout(()=> {
+        const pane = document.getElementById('right');
+        if (pane) pane.scrollTop = pane.scrollHeight;
+      }, 60);
     } else {
-      showError( tr('errWriteFailed') );  // ошибка записи в базу
+      showError(tr('errWriteFailed'));
     }
   });
 
@@ -284,14 +263,21 @@
       const okPush = await Data.pushDate(preset.b, preset.d);
       if (okPush){
         if (debugInfo) debugInfo.textContent = `${tr('seedAdded')} ${preset.b} – ${preset.d}`;
+        setTimeout(()=> {
+          const pane = document.getElementById('right');
+          if (pane) pane.scrollTop = pane.scrollHeight;
+        }, 60);
       } else {
-        if (debugInfo) debugInfo.textContent = tr('seedWriteFailed'); // ошибка записи
+        if (debugInfo) debugInfo.textContent = tr('seedWriteFailed');
       }
     });
   }
+
+  // === локализация на старте
+  window.addEventListener('load', applyTexts);
 })();
 
-/* === [ADDED] Фактическая высота плашки контактов -> сдвиг дебага === */
+/* === Фактическая высота плашки контактов -> сдвиг дебага (если контакт-бар включат) === */
 (function(){
   const bar = document.getElementById('contactsBar');
   if (!bar) return;
@@ -306,17 +292,17 @@
   window.addEventListener('resize', apply);
 })();
 
-/* === [ADDED] Слева счётчик, справа "что сейчас звучит?" (вертикальная версия, тексты из TEXTS) === */
+/* === Верхние «уши» у дебага: слева — счётчик (только после старта), справа — переключатель языка === */
 (function(){
-  // Создаём элементы, если их нет в разметке
+  // убедимся, что уши есть
   let left  = document.getElementById('dbLeft');
-  let right = document.getElementById('dbRight');
   if (!left){
     left = document.createElement('div');
     left.id = 'dbLeft';
     left.className = 'debug-side';
     document.body.appendChild(left);
   }
+  let right = document.getElementById('dbRight');
   if (!right){
     right = document.createElement('button');
     right.id = 'dbRight';
@@ -324,10 +310,33 @@
     document.body.appendChild(right);
   }
 
-  // Тексты из глобального словаря TEXTS
-  const L = (typeof TEXTS === 'object' && TEXTS[CURRENT_LANG]) || (TEXTS && TEXTS.ru) || { dbCount:'N={n}', nowPlayingBtn:'what is playing now?' };
+  // правое «ухо» — языковая кнопка
+  function syncLangEar(){ right.textContent = (CURRENT_LANG === 'ru' ? 'ENG' : 'РУС'); }
+  right.onclick = ()=>{
+    CURRENT_LANG = (CURRENT_LANG === 'ru' ? 'en' : 'ru');
+    syncLangEar();
+    window.applyTexts && window.applyTexts();
 
-  // Счётчик пар (через Visual.timeline/pairEnd)
+    // Скрыть бары при переключении языка
+const ok   = document.getElementById('okBar');
+const err  = document.getElementById('errorBar');
+if (ok) ok.hidden = true;
+if (err) err.hidden = true;
+
+
+    // НЕ теряем дебаг на первом экране: вернём «ожидание старта»
+    const startBtn = document.getElementById('startBtn');
+    if (startBtn && startBtn.style.display !== 'none'){
+      window.setDebug && window.setDebug(tr('waitingStart'));
+    }
+
+    // перерисовать счётчик на новом языке
+    renderCount(computeCount());
+    document.dispatchEvent(new Event('lang-changed'));
+  };
+  syncLangEar();
+
+  // левое «ухо»: счётчик по таймлайну (pairEnd)
   function computeCount(){
     try{
       if (window.Visual && Array.isArray(Visual.timeline)){
@@ -337,52 +346,73 @@
     return 0;
   }
   function renderCount(n){
-    const tpl = L.dbCount || 'N={n}';
-    left.textContent = tpl.replace('{n}', n);
+    const L = (typeof TEXTS === 'object' && TEXTS[CURRENT_LANG]) || (TEXTS && TEXTS.ru) || { dbCount:'N={n}' };
+    left.textContent = (L.dbCount || 'N={n}').replace('{n}', n);
   }
-  const REFRESH = (window.AppConfig && AppConfig.UI && AppConfig.UI.DB_COUNT_REFRESH_MS) || 4000;
+
+  // показываем левое «ухо» только после старта
+  function syncDbLeftVisibility(){
+    const startBtn = document.getElementById('startBtn');
+    const onSecondScreen = !startBtn || startBtn.style.display === 'none';
+    left.style.display = onSecondScreen ? 'block' : 'none';
+  }
+
+  // первичная отрисовка и видимость
   renderCount(computeCount());
+  syncDbLeftVisibility();
+
+  // автообновление цифры
+  const REFRESH = (window.AppConfig && AppConfig.UI && AppConfig.UI.DB_COUNT_REFRESH_MS) || 4000;
   if (!left.__countTimer){
     left.__countTimer = setInterval(()=>renderCount(computeCount()), REFRESH);
   }
 
-  // Кнопка: «что сейчас звучит?» — центрируем активный элемент по вертикали в #right
-  function findActiveEl(){
-    const stream = document.getElementById('stream');
-    if (!stream) return null;
-    return stream.querySelector('.digit.active, .active');
-  }
-  function scrollActiveIntoCenter(){
-    const pane = document.getElementById('right');
-    const el   = findActiveEl();
-    if (!pane || !el) return;
-    const paneRect = pane.getBoundingClientRect();
-    const elRect   = el.getBoundingClientRect();
-    const elTopInPane = elRect.top - paneRect.top + pane.scrollTop;
-    const targetTop   = Math.max(0, elTopInPane - (pane.clientHeight - el.clientHeight)/2);
-    pane.scrollTo({ top: targetTop, behavior: 'smooth' });
-  }
+  // события
+  document.addEventListener('app-started', ()=>{
+    syncDbLeftVisibility();
+    renderCount(computeCount());
+  });
+  document.addEventListener('lang-changed', ()=> renderCount(computeCount()));
+  window.addEventListener('load', syncDbLeftVisibility);
+})();
 
-  right.textContent = L.nowPlayingBtn || 'what is playing now?';
-  right.addEventListener('click', scrollActiveIntoCenter);
+/* === Inline «что сейчас играет» в ряд с формами (кнопку создаём после addBtn) === */
+(function(){
+  const addBtn = document.getElementById('addBtn');
+  const L = (typeof TEXTS === 'object' && TEXTS[CURRENT_LANG]) || (TEXTS && TEXTS.ru) || {};
+  if (addBtn && !document.getElementById('nowPlayInline')){
+    const btn = document.createElement('button');
+    btn.id = 'nowPlayInline';
+    btn.type = 'button';
+    btn.className = addBtn.className || '';
+    btn.textContent = L.nowPlayingBtn || 'что сейчас звучит?';
+    addBtn.insertAdjacentElement('afterend', btn);
 
-  // Дополнительно: мягко центрировать при смене таймлайна, если класс .active обновился
-  const origTL = window.Player && Player.onTimelineChanged;
-  if (window.Player){
-    Player.onTimelineChanged = function(){
-      if (typeof origTL === 'function') origTL();
-      setTimeout(scrollActiveIntoCenter, 16);
-    };
+    btn.addEventListener('click', ()=>{
+      const pane   = document.getElementById('right');
+      const stream = document.getElementById('stream');
+      if (!pane || !stream) return;
+      const el = stream.querySelector('.digit.active, .active');
+      if (!el) return;
+      const paneRect = pane.getBoundingClientRect();
+      const elRect   = el.getBoundingClientRect();
+      const topInPane = elRect.top - paneRect.top + pane.scrollTop;
+      const targetTop = Math.max(0, topInPane - (pane.clientHeight - el.clientHeight)/2);
+      pane.scrollTo({ top: targetTop, behavior: 'smooth' });
+    });
+
+    // после появления кнопки — пересчитать ширину баров
+    window.recalcBarsWidth && window.recalcBarsWidth();
   }
 })();
 
-/* === [ADDED] Автоприлипание к НИЗУ вертикального контейнера #right (пока пользователь не скроллит) === */
+/* === Автоприлипание к НИЗУ вертикального контейнера #right (пока пользователь не скроллит) === */
 (function(){
-  const pane   = document.getElementById('right');   // вертикальный скролл
+  const pane   = document.getElementById('right');
   const stream = document.getElementById('stream');
   if (!pane || !stream) return;
 
-  let stick = true; // держим низ, пока юзер сам не прокрутил вверх
+  let stick = true;
 
   function atBottom(){
     return (pane.scrollHeight - pane.clientHeight - pane.scrollTop) < 8;
@@ -398,13 +428,11 @@
   pane.addEventListener('wheel',  onUserScroll, { passive:true });
   pane.addEventListener('touchmove', onUserScroll, { passive:true });
 
-  // Реагируем на изменения содержимого #stream
   if (typeof MutationObserver !== 'undefined'){
     const mo = new MutationObserver(()=> requestAnimationFrame(keepAtBottom));
     mo.observe(stream, { childList:true, subtree:true, characterData:true });
   }
 
-  // После добавления новой даты — тоже вниз (если Data.pushDate есть)
   if (window.Data && typeof Data.pushDate === 'function' && !Data.__wrappedPushDate){
     const _push = Data.pushDate;
     Data.pushDate = async function(...args){
@@ -420,8 +448,111 @@
     Data.__wrappedPushDate = true;
   }
 
-  // На старте — прилипнуть вниз
   window.addEventListener('load', keepAtBottom);
-  // И через небольшой таймаут (если поток пришёл чуть позже)
   setTimeout(keepAtBottom, 120);
 })();
+
+
+
+// === Раскладка верхнего дебага: одинаковая линия, зазоры, узкий режим ===
+(function(){
+  const root = document.documentElement;
+  const dbLeft  = document.getElementById('dbLeft');
+  const dbRight = document.getElementById('dbRight');
+  const dbg     = document.getElementById('debugInfo');
+
+  if (!dbLeft || !dbRight || !dbg) return;
+
+  function px(n){ return Math.max(0, Math.round(n)) + 'px'; }
+
+  function layout(){
+    const minGap = parseInt(getComputedStyle(root).getPropertyValue('--debug-min-gap')) || 16;
+
+    const lRect = dbLeft.getBoundingClientRect();
+    const rRect = dbRight.getBoundingClientRect();
+    const dRect = dbg.getBoundingClientRect();
+
+    // ширина «ушей» + минимальные отступы
+    const leftReserve  = (lRect.width  ? (lRect.width  + minGap) : 0);
+    const rightReserve = (rRect.width ? (rRect.width + minGap) : 0);
+
+    root.style.setProperty('--debug-left-reserve',  px(leftReserve));
+    root.style.setProperty('--debug-right-reserve', px(rightReserve));
+
+    // если «уши» съели почти весь центр — включаем компактный режим
+    const tooTight = (leftReserve + rightReserve + 40) > dRect.width; // +40 — небольшая страховка
+    root.classList.toggle('debug-tight', tooTight);
+  }
+
+  // считать при загрузке/ресайзе/смене языка/обновлении счётчика
+  window.addEventListener('load', layout);
+  window.addEventListener('resize', layout);
+  document.addEventListener('lang-changed', layout);
+
+  // если у тебя счётчик обновляется по таймеру — пересчитываем после него:
+  if (window.AppConfig?.UI?.DB_COUNT_REFRESH_MS){
+    setInterval(layout, Math.min(AppConfig.UI.DB_COUNT_REFRESH_MS, 3000));
+  }
+
+  // и сразу
+  layout();
+})();
+
+
+
+
+/* === OK/ERROR бары: строго МЕЖДУ формой и описанием, но только ПОСЛЕ старта === */
+(function(){
+  const ok    = document.getElementById('okBar');
+  const err   = document.getElementById('errorBar');
+  const form  = document.getElementById('formSection');
+  const intro = document.getElementById('introBox');      // плашка описания
+  if (!ok || !err || !form || !intro) return;
+
+  // Размещение баров между формой и описанием — выполняем только после старта
+  function placeBetween(){
+    form.insertAdjacentElement('afterend', ok);
+    ok.insertAdjacentElement('afterend', err);
+    err.insertAdjacentElement('afterend', intro);
+    window.recalcBarsWidth && window.recalcBarsWidth();
+  }
+
+  // если уже на втором экране (после refresh) — разместить сразу
+  const startBtn = document.getElementById('startBtn');
+  if (!startBtn || startBtn.style.display === 'none'){ placeBetween(); }
+  // а в обычном случае — дождаться события старта
+  document.addEventListener('app-started', placeBetween);
+
+  // Подгон ширины: от левого края birth до правого края nowPlayInline (или addBtn)
+  const pane = document.querySelector('.left-inner');
+  function applyBarsWidth(){
+    const leftEl   = document.getElementById('birthInput');
+    const rightEl  = document.getElementById('nowPlayInline') || document.getElementById('addBtn');
+    const col1Ref  = document.querySelector('.left-inner .card'); // начало левой колонки
+    if (!pane || !leftEl || !rightEl || !col1Ref) return;
+
+    const paneRect  = pane.getBoundingClientRect();
+    const col1Left  = col1Ref.getBoundingClientRect().left - paneRect.left + pane.scrollLeft;
+
+    const Labs      = leftEl.getBoundingClientRect().left  - paneRect.left + pane.scrollLeft;
+    const Rabs      = rightEl.getBoundingClientRect().right - paneRect.left + pane.scrollLeft;
+    const L         = Math.max(0, Labs - col1Left);
+    const W         = Math.max(0, Rabs - Labs);
+
+    document.documentElement.style.setProperty('--bars-left',  L + 'px');
+    document.documentElement.style.setProperty('--bars-width', W + 'px');
+  }
+  window.recalcBarsWidth = applyBarsWidth;
+
+  window.addEventListener('load',   applyBarsWidth);
+  window.addEventListener('resize', applyBarsWidth);
+  if (typeof ResizeObserver !== 'undefined'){
+    try{
+      new ResizeObserver(applyBarsWidth).observe(pane);
+      new ResizeObserver(applyBarsWidth).observe(form);
+      new ResizeObserver(applyBarsWidth).observe(intro);
+    }catch(e){}
+  }
+  setTimeout(applyBarsWidth, 120);
+})();
+

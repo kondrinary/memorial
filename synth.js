@@ -50,6 +50,7 @@
     revEqHigh:   pick('revEqHigh', 0),
     revEqLowFreq:  pick('revEqLowFreq', 400),
     revEqHighFreq: pick('revEqHighFreq', 2500),
+    revEqQ:        pick('revEqQ', 1.0),
 
     // Дилей-ветка (стартовые значения; дальше — от индекса)
     delayTime:   pick('delayTime', '4n'),
@@ -73,7 +74,21 @@
     // Полифония/мастер
     bodyPolyMax:   pick('bodyPolyMax', 16),
     attackPolyMax: pick('attackPolyMax', 16),
-    masterDb:      pick('masterDb', -4)
+    masterDb:      pick('masterDb', -4),
+
+    // --- Мастер-EQ (после masterGain) ---
+    masterEqEnable: pick('masterEqEnable', true),
+    masterEqLow:    pick('masterEqLow',   0),
+    masterEqMid:    pick('masterEqMid',   0),
+    masterEqHigh:   pick('masterEqHigh',  0),
+    masterEqLowFreq:  pick('masterEqLowFreq',  400),
+    masterEqHighFreq: pick('masterEqHighFreq', 2500),
+    masterEqQ:        pick('masterEqQ',    1.0),
+
+
+
+
+
   };
 
   // ===== Узлы звука =====
@@ -131,7 +146,7 @@
   let dryGain, revSend, reverb, revEQ, revWetGain;
   let delSend, ping, delWetGain;
   let echoVerb; // реверб для ПОВТОРОВ, стоит ПОСЛЕ дилея
-  let masterGain;
+  let masterGain, masterEQ; // мастер-EQ (EQ3) между masterGain и Destination
 
   // ===== Инициализация =====
   Synth.init = function(){
@@ -189,7 +204,7 @@
 
     // Реверб-ветка: Freeverb → EQ3 → revWetGain
     reverb    = new Tone.Freeverb({ roomSize: FX.reverbRoom, dampening: FX.reverbDamp, wet: 1 });
-    revEQ     = new Tone.EQ3({ low: FX.revEqLow, mid: FX.revEqMid, high: FX.revEqHigh, lowFrequency: FX.revEqLowFreq, highFrequency: FX.revEqHighFreq });
+    revEQ     = new Tone.EQ3({ low: FX.revEqLow, mid: FX.revEqMid, high: FX.revEqHigh, lowFrequency: FX.revEqLowFreq, highFrequency: FX.revEqHighFreq,   Q: FX.revEqQ     });
     revWetGain= new Tone.Gain(clamp(FX.reverbWet,0,1));
     revSend.chain(reverb, revEQ, revWetGain);
 
@@ -209,8 +224,24 @@ delSend.chain(ping, echoVerb, delWetGain);
     dryGain.connect(masterGain);
     revWetGain.connect(masterGain);
     delWetGain.connect(masterGain);
-    masterGain.connect(Tone.Destination);
+
+    // [ADD] Аккуратно вставляем мастер-EQ после мастера (не изменяя остальную архитектуру)
+    if (FX.masterEqEnable) {
+      masterEQ = new Tone.EQ3({
+        low:  FX.masterEqLow,
+        mid:  FX.masterEqMid,
+        high: FX.masterEqHigh,
+        lowFrequency:  FX.masterEqLowFreq,
+        highFrequency: FX.masterEqHighFreq,
+        Q: FX.masterEqQ
+      });
+      masterGain.chain(masterEQ, Tone.Destination);
+    } else {
+      masterGain.connect(Tone.Destination);
+    }
+
     Tone.Destination.volume.value = FX.masterDb;
+
 
     ready = true;
     Synth.fx = FX;
