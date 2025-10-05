@@ -208,7 +208,7 @@ window.AppConfig = {
   firebaseConfig: {
     apiKey: "ВАШ_API_KEY",
     authDomain: "ВАШ_PROJECT_ID.firebaseapp.com",
-    databaseURL: "https://memorial-bea3c-default-rtdb.europe-west1.firebasedatabase.app",
+    databaseURL: "https://memorial-bea3c.europe-west1.firebasedatabase.app/",
     projectId: "ВАШ_PROJECT_ID",
     storageBucket: "ВАШ_PROJECT_ID.appspot.com",
     messagingSenderId: "ВАШ_MESSAGING_SENDER_ID",
