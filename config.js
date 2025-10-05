@@ -22,14 +22,14 @@ const ENABLE_SEED = false;   // true = показывать кнопку тес�
 
 
 // контакты
-const studioName  = "наименование";
-const studioUrl   = "https://example.com";
+const studioName  = "MEDIUM";
+const studioUrl   = "https://mediumstudio.ru";
 const artist1Name = "настасья кондрина";
-const artist1Url  = "https://azmesm.ru/nastasyakondrina";
+const artist1Url  = "https://mediumstudio.ru/nastasyakondrina";
 const artist2Name = "андрей обыденников";
-const artist2Url  = "https://azmesm.ru/andrey_obidennikov"; 
+const artist2Url  = "https://mediumstudio.ru/andrey_obidennikov"; 
 // EN display 
-const studioNameEn  = "Studio Name";         
+const studioNameEn  = "MEDIUM";         
 const artist1NameEn = "Nastasya Kondrina";    
 const artist2NameEn = "Andrey Obydennikov"; 
 
