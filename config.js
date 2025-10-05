@@ -83,7 +83,7 @@ waitingStart: "ожидание запуска. нажмите кнопку по
   hz: "Гц",
   idxLabel: "индекс ",
   dbCount: "количество дат: {n}",
-  nowPlayingBtn: "что сейчас звучит?",
+  nowPlayingBtn: "кто сейчас звучит?",
 
 // «успех-бар» (белый текст)
   okBar: "ваша запись добавлена в память цифрового мемориала"
@@ -134,7 +134,7 @@ contacts: "the project was created by " +
   hz: "Hz",
   idxLabel: "idx",
   dbCount: "dates in database: {n}",
-nowPlayingBtn: "what is playing now?",
+nowPlayingBtn: "whо is sounding now?",
 
 
 // «успех-бар» (белый текст)
